@@ -1,4 +1,4 @@
-// script.js (v1.3)
+// script.js (v1.3.1)
 document.addEventListener("DOMContentLoaded", () => {
   /* Tema */
   const themeToggle = document.getElementById('themeToggle');
@@ -70,10 +70,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // Finish loader once Firebase is ready
+    // Ocultar loader cuando Firebase listo
     loader.classList.add('hidden');
 
-    // Config
+    // Configuración
     const cfgRef = ref(db, 'configuracion');
     let CONTRASENA_ACTUAL = "Padel2025";
     let ADMIN_PASS = "p4d3l";
@@ -167,11 +167,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const entries = Object.entries(data);
       contadorJugadores.textContent = `${entries.length} jugador(es)`;
       listaJugadores.innerHTML = "";
-      entries.forEach(([id, j]) => {
+      entries.forEach(([id, j], idx) => {
         const el = document.createElement('div');
         el.className = "flex items-center justify-between border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2";
         el.innerHTML = `
           <div class="flex items-center gap-3">
+            <span class="text-sm font-semibold w-5 text-right">${idx + 1}.</span>
             <span class="inline-flex w-8 h-8 rounded-full bg-emerald-600 text-white items-center justify-center font-bold">${(j.nombre||'?').slice(0,1).toUpperCase()}</span>
             <div>
               <div class="font-semibold">${j.nombre}</div>
@@ -200,17 +201,12 @@ document.addEventListener("DOMContentLoaded", () => {
         await set(dstRef, src.val());
       }
       await set(srcRef, null);
-      alert("🏁 Jornada finalizada. ¡Buen juego equipo!\\nLos datos de hoy fueron archivados y la sesión se reinició.");
+      alert("🏁 Jornada finalizada. ¡Buen juego equipo!\nLos datos de hoy fueron archivados y la sesión se reinició.");
       contadorJugadores.textContent = "0 jugador(es)";
       listaJugadores.innerHTML = "";
       await ensureSesion();
     }
     btnFinalizar.addEventListener('click', finalizarJornada);
     adminFinalizar.addEventListener('click', finalizarJornada);
-
-    // Logo hover bounce
-    const logo = document.querySelector('.logo-ball');
-    logo?.addEventListener('mouseenter', () => logo.classList.add('animate-bounce'));
-    logo?.addEventListener('mouseleave', () => logo.classList.remove('animate-bounce'));
   });
 });
