@@ -1,35 +1,124 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="h-full">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Padel-Americano Zacatecas</title>
+  <meta name="theme-color" content="#16a34a" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <script type="module" src="./script.js"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='44' cy='20' r='5' fill='%2322c55e'/%3E%3Cpath d='M12 44c6-10 18-18 32-20 3 0 6 2 7 5 1 3-1 6-3 8C36 46 26 52 16 54c-3 0-6-1-7-4-1-3 1-5 3-6z' fill='%230a0a0a'/%3E%3C/svg%3E" />
 </head>
-<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
-  <div id="login-screen" class="text-center">
-    <h1 class="text-3xl font-bold mb-2 text-green-700">Padel-Americano Zacatecas 🎾</h1>
-    <p class="text-gray-600 mb-4">Americano Pádel Zacatecas</p>F
-    <button id="enterBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Entrar</button>
-  </div>
-
-  <div id="password-screen" class="hidden text-center">
-    <h2 class="text-2xl font-semibold mb-2">🔒 Acceso protegido</h2>
-    <p class="text-gray-600 mb-4">Ingresa la contraseña para acceder</p>
-    <input type="password" id="passwordInput" class="border p-2 rounded" placeholder="Contraseña">
-    <button id="loginBtn" class="ml-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded">Entrar</button>
-    <p id="errorMsg" class="text-red-500 mt-2 hidden">Contraseña incorrecta</p>
-  </div>
-
-  <div id="main-screen" class="hidden w-full max-w-2xl bg-white shadow-md rounded-lg p-6">
-    <h2 class="text-2xl font-bold text-center mb-4 text-green-700">Americano Pádel Zacatecas</h2>
-    <p class="text-gray-600 text-center mb-4">Datos sincronizados con Firebase</p>
-    <div class="text-center">
-      <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 text-white py-1 px-3 rounded">Salir</button>
+<body class="h-full bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100">
+  <header class="sticky top-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur border-b border-slate-200 dark:border-slate-800">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <img src="assets/logo.svg" alt="Pala de pádel" class="w-8 h-8">
+        <div class="text-lg font-bold">Padel-Americano Zacatecas</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="themeToggle" class="rounded-lg px-3 py-1.5 border border-slate-300 dark:border-slate-700 text-sm hover:bg-slate-100 dark:hover:bg-slate-800" title="Cambiar tema">🌞/🌙</button>
+        <button id="adminOpen" class="rounded-lg px-3 py-1.5 border border-slate-300 dark:border-slate-700 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">ADMIN</button>
+      </div>
     </div>
-    <hr class="my-4">
-    <p class="text-center text-gray-500">Aquí se mostrará la lógica de jugadores, partidos y resultados 🔜</p>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 py-6 space-y-6">
+    <section id="loginSection" class="space-y-4">
+      <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow">
+        <h1 class="text-2xl font-extrabold mb-2">Bienvenido 👋</h1>
+        <p class="text-slate-600 dark:text-slate-300">Ingresa para acceder a la jornada de hoy. La contraseña se gestiona desde Firebase.</p>
+        <div class="mt-4 grid sm:grid-cols-3 gap-3 items-end">
+          <div class="sm:col-span-2">
+            <label class="text-sm font-medium">Contraseña</label>
+            <input id="inputPassword" type="password" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2" placeholder="Escribe la contraseña" />
+            <p id="loginMsg" class="text-sm text-rose-600 mt-2 hidden">Contraseña incorrecta.</p>
+          </div>
+          <button id="btnLogin" class="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">Entrar</button>
+        </div>
+        <p class="text-xs text-slate-500 mt-3">Consejo: cambia la contraseña desde ADMIN al finalizar la jornada.</p>
+      </div>
+    </section>
+
+    <section id="appSection" class="hidden space-y-6">
+      <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 flex items-center justify-between">
+        <div class="text-sm">Sesión de hoy: <span id="hoyTag" class="font-semibold"></span></div>
+        <div class="flex items-center gap-2">
+          <button id="btnLogout" class="rounded-lg px-3 py-1.5 border border-slate-300 dark:border-slate-700 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">Salir</button>
+        </div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6">
+        <h2 class="text-xl font-bold mb-4">Registro de jugadores</h2>
+        <div class="grid sm:grid-cols-5 gap-3 items-end">
+          <div class="sm:col-span-3">
+            <label class="text-sm font-medium">Nombre</label>
+            <input id="jugadorNombre" type="text" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2" placeholder="Ej. Roberto Cabral" />
+          </div>
+          <div>
+            <label class="text-sm font-medium">Cancha</label>
+            <select id="jugadorCancha" class="mt-1 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2">
+              <option value="1">Cancha 1</option>
+              <option value="2">Cancha 2</option>
+              <option value="3">Cancha 3</option>
+              <option value="4">Cancha 4</option>
+            </select>
+          </div>
+          <button id="btnAgregarJugador" class="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">Agregar</button>
+        </div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-xl font-bold">Jugadores de hoy</h2>
+          <span id="contadorJugadores" class="text-sm text-slate-600 dark:text-slate-300"></span>
+        </div>
+        <div id="listaJugadores" class="grid gap-2"></div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6">
+        <div class="flex items-center justify-between">
+          <div class="text-sm text-slate-600 dark:text-slate-300">Al finalizar, se archivará la jornada y se limpiará la sesión actual.</div>
+          <button id="btnFinalizar" class="rounded-xl bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 font-semibold">Finalizar jornada</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="adminModal" class="hidden fixed inset-0 z-20 items-center justify-center bg-black/40 p-4">
+    <div class="w-full max-w-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-xl">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold">Panel de ADMIN</h3>
+        <button id="adminClose" class="text-slate-500 hover:text-slate-700">✖</button>
+      </div>
+      <div id="adminGate" class="space-y-3">
+        <p class="text-sm text-slate-600 dark:text-slate-300">Ingresa la contraseña de administrador para continuar.</p>
+        <input id="adminInput" type="password" class="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2" placeholder="Contraseña admin (p4d3l)" />
+        <button id="adminCheck" class="w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 font-semibold">Acceder</button>
+        <p id="adminMsg" class="text-sm text-rose-600 hidden">Contraseña admin incorrecta.</p>
+      </div>
+      <div id="adminPanel" class="hidden space-y-5">
+        <div>
+          <label class="text-sm font-medium">Cambiar contraseña general</label>
+          <div class="mt-1 flex gap-2">
+            <input id="nuevaPassword" type="text" class="flex-1 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2" placeholder="Nueva contraseña (ej. Padel2025X)" />
+            <button id="adminSavePass" class="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 font-semibold">Guardar</button>
+          </div>
+          <p id="adminSaveMsg" class="text-sm text-emerald-600 mt-2 hidden">Contraseña actualizada ✅</p>
+        </div>
+        <div class="border-t border-slate-200 dark:border-slate-700 pt-4">
+          <button id="adminFinalizar" class="w-full rounded-xl bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 font-semibold">Finalizar jornada</button>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <footer class="py-6 text-center text-xs text-slate-500">
+    Desarrollado por <strong>Roberto Cabral</strong>
+  </footer>
+
+  <script type="module" src="./script.js"></script>
 </body>
 </html>
