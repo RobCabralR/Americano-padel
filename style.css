@@ -1,1 +1,4 @@
-/* Estilos extra si quisieras, Tailwind maneja casi todo. */
+/* style.css */
+body {
+  font-family: 'Inter', sans-serif;
+}
