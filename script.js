@@ -29,19 +29,26 @@ logoutBtn.addEventListener('click', () => {
   loginScreen.classList.remove('hidden');
 });
 
-// Configuración Firebase (pendiente de tus claves)
+// ✅ Firebase Configuración
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+
 const firebaseConfig = {
-  apiKey: "TU_API_KEY",
-  authDomain: "TU_AUTH_DOMAIN",
-  databaseURL: "https://americano_padel_zacatecas.firebaseio.com",
-  projectId: "americano_padel_zacatecas",
-  storageBucket: "americano_padel_zacatecas.appspot.com",
-  messagingSenderId: "TU_MESSAGING_ID",
-  appId: "TU_APP_ID"
+  apiKey: "AIzaSyDm0J5dnEavIi0ow8o9q86Zl515E1zqIY0",
+  authDomain: "padel-zac.firebaseapp.com",
+  databaseURL: "https://padel-zac-default-rtdb.firebaseio.com",
+  projectId: "padel-zac",
+  storageBucket: "padel-zac.firebasestorage.app",
+  messagingSenderId: "873811901531",
+  appId: "1:873811901531:web:3175ad146974213728d37e"
 };
 
-// Ejemplo de inicialización (se activará al agregar tus claves)
-// import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-// import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
-// const app = initializeApp(firebaseConfig);
-// const db = getDatabase(app);
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// 🔍 Prueba de conexión
+const pingRef = ref(db, 'ping');
+set(pingRef, { ok: true, at: new Date().toISOString() });
+onValue(pingRef, (snap) => {
+  console.log('Firebase OK →', snap.val());
+});
