@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Padel-Americano | Los Inmortales</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="Americano de Pádel Los Inmortales - Gestión de canchas, jugadores y resultados.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎾</text></svg>">
+  <style>
+    /* estilos mínimos adicionales */
+    .card { @apply bg-white/90 backdrop-blur border border-gray-200 rounded-2xl shadow-lg p-6; }
+    .btn { @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium border transition active:scale-[.98]; }
+    .btn-primary { @apply bg-blue-600 text-white border-blue-600 hover:bg-blue-700; }
+    .btn-outline { @apply bg-white text-gray-800 border-gray-300 hover:bg-gray-50; }
+    .pill { @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm border; }
+    .input { @apply w-full rounded-xl border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500; }
+    .select { @apply w-full rounded-xl border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white; }
+    .label { @apply text-sm font-medium text-gray-700; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200 text-slate-800">
+  <!-- Landing -->
+  <section id="landing" class="min-h-screen flex items-center justify-center p-6">
+    <div class="card w-full max-w-lg text-center space-y-6">
+      <div class="space-y-2">
+        <div class="mx-auto w-20 h-20 grid place-content-center text-5xl">🎾</div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold">Padel-Americano</h1>
+        <p class="text-slate-600">Americano Pádel Los Inmortales</p>
+      </div>
+      <button id="btnGoLogin" class="btn btn-primary w-full">Entrar</button>
+      <p class="text-xs text-slate-500">v1.0 • Funciona en móviles • Datos guardados localmente</p>
+    </div>
+  </section>
+
+  <!-- Login -->
+  <section id="login" class="min-h-screen hidden items-center justify-center p-6">
+    <div class="card w-full max-w-md">
+      <h2 class="text-xl font-bold mb-4">🔒 Acceso</h2>
+      <p class="text-slate-600 mb-4">Ingresa la contraseña para acceder al Americano.</p>
+      <div class="space-y-3">
+        <label class="label" for="password">Contraseña</label>
+        <input id="password" type="password" class="input" placeholder="Escribe la contraseña" />
+        <button id="btnLogin" class="btn btn-primary w-full mt-2">Acceder</button>
+        <p id="loginMsg" class="text-sm text-red-600 hidden">Contraseña incorrecta.</p>
+      </div>
+      <p class="text-xs text-slate-500 mt-6">Sugerencia: cambia la contraseña al finalizar el día del Americano.</p>
+    </div>
+  </section>
+
+  <!-- App -->
+  <section id="app" class="hidden min-h-screen">
+    <!-- Topbar -->
+    <header class="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-gray-200">
+      <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="text-2xl">🎾</div>
+          <div>
+            <h1 class="text-lg sm:text-xl font-bold leading-tight">Padel-Americano</h1>
+            <p class="text-xs text-slate-500 -mt-0.5">Americano Pádel Los Inmortales</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnLogout" class="btn btn-outline">Salir</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="max-w-5xl mx-auto p-4 sm:p-6 space-y-6">
+      <!-- Config / selector -->
+      <div class="card">
+        <div class="grid sm:grid-cols-4 gap-4 items-end">
+          <div class="sm:col-span-1">
+            <label class="label">Cancha</label>
+            <select id="selectCourt" class="select">
+              <option value="1">Cancha 1</option>
+              <option value="2">Cancha 2</option>
+              <option value="3">Cancha 3</option>
+              <option value="4">Cancha 4</option>
+            </select>
+          </div>
+          <div class="sm:col-span-1">
+            <label class="label">N.º de jugadores</label>
+            <select id="selectPlayers" class="select">
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8" selected>8</option>
+            </select>
+          </div>
+          <div class="sm:col-span-2 flex gap-3">
+            <button id="btnSaveRoster" class="btn btn-primary flex-1">Guardar jugadores</button>
+            <button id="btnGenerate" class="btn btn-outline flex-1">Generar partido(s)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Roster -->
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="card">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-bold">Jugadores</h3>
+            <span id="rosterCount" class="pill border-gray-300 text-slate-600">0 / 8</span>
+          </div>
+          <div id="rosterList" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+          <p class="text-xs text-slate-500 mt-4">Tip: deja campos vacíos si necesitas menos jugadores. Si el número es impar, se usará un comodín para completar.</p>
+        </div>
+
+        <!-- Matches -->
+        <div class="card">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-bold">Partido(s) actuales</h3>
+            <button id="btnClearMatches" class="btn btn-outline text-sm">Nueva ronda</button>
+          </div>
+          <div id="matchesContainer" class="space-y-4"></div>
+        </div>
+      </div>
+
+      <!-- Saved results -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-bold">Historial de resultados</h3>
+          <button id="btnClearAll" class="btn btn-outline text-sm">Borrar todo (solo esta cancha)</button>
+        </div>
+        <div id="historyContainer" class="space-y-3"></div>
+      </div>
+    </main>
+  </section>
+
+  <script>
+    // ====== Configuración ======
+    const PASSWORD = "Padel2025";
+    const APP_KEY = "americano_padel_v1";
+    const MAX_PLAYERS = 8;
+
+    // ====== Helpers ======
+    const $ = (id) => document.getElementById(id);
+    const show = (el) => { el.classList.remove("hidden"); el.classList.add("flex"); };
+    const hide = (el) => { el.classList.add("hidden"); el.classList.remove("flex"); };
+    const randomShuffle = (arr) => arr.map(v => ({v, s: Math.random()})).sort((a,b)=>a.s-b.s).map(o=>o.v);
+
+    function saveState(courtId, state) {
+      const all = JSON.parse(localStorage.getItem(APP_KEY) || "{}");
+      all[courtId] = state;
+      localStorage.setItem(APP_KEY, JSON.stringify(all));
+    }
+    function loadState(courtId) {
+      const all = JSON.parse(localStorage.getItem(APP_KEY) || "{}");
+      return all[courtId] || { players: Array(MAX_PLAYERS).fill(""), matches: [], history: [] };
+    }
+
+    function updateRosterUI(state) {
+      const n = parseInt($("selectPlayers").value, 10);
+      const roster = $("rosterList");
+      roster.innerHTML = "";
+      for (let i=0; i<n; i++) {
+        const val = state.players[i] || "";
+        const row = document.createElement("div");
+        row.innerHTML = \`
+          <div class="space-y-1">
+            <label class="label">Jugador \${i+1}</label>
+            <input data-idx="\${i}" class="input player-input" type="text" placeholder="Nombre" value="\${val.replaceAll('"','&quot;')}" />
+          </div>\`;
+        roster.appendChild(row);
+      }
+      $("rosterCount").textContent = \`\${state.players.filter(x=>x && x.trim()!=="").length} / \${n}\`;
+      // attach listeners
+      roster.querySelectorAll(".player-input").forEach(inp => {
+        inp.addEventListener("input", () => {
+          const courtId = $("selectCourt").value;
+          const st = loadState(courtId);
+          st.players[parseInt(inp.dataset.idx,10)] = inp.value;
+          saveState(courtId, st);
+          $("rosterCount").textContent = \`\${st.players.filter(x=>x && x.trim()!=="").length} / \${n}\`;
+        });
+      });
+    }
+
+    function makePairsForRound(players) {
+      // Filter valid names
+      const names = players.filter(p => p && p.trim() !== "");
+      if (names.length < 4) return [];
+      // Shuffle players
+      const shuffled = randomShuffle(names);
+      const matches = [];
+      const bench = []; // jugadores que no entran en esta ronda
+      // Determinar cuantos entran en esta ronda (múltiplos de 4)
+      const usableCount = Math.floor(shuffled.length / 4) * 4;
+      const active = shuffled.slice(0, usableCount);
+      const resting = shuffled.slice(usableCount);
+      // Formar parejas
+      for (let i = 0; i < active.length; i += 4) {
+        const block = [active[i], active[i+1], active[i+2], active[i+3]];
+        matches.push({
+          t1: [block[0], block[1]],
+          t2: [block[2], block[3]],
+          score: { a: null, b: null },
+          comment: ""
+        });
+      }
+      // Si quedan jugadores en descanso y tenemos menos de 4 en el último bloque, usamos comodín ficticio
+      // Caso: nombres no múltiplos de 4 (5 o 6 o 7)
+      const remainder = names.length % 4;
+      if (remainder !== 0) {
+        const needed = 4 - remainder;
+        const lastNames = shuffled.slice(usableCount); // los que quedaron fuera
+        const pool = names; // podemos tomar comodines de cualquiera (regla: "entre los que no estén jugando entra uno aleatorio")
+        const chosen = randomShuffle(pool).slice(0, needed);
+        const block = [...lastNames, ...chosen.map(n => n + " (comodín)")];
+        if (block.length === 4) {
+          matches.push({
+            t1: [block[0], block[1]],
+            t2: [block[2], block[3]],
+            score: { a: null, b: null },
+            comment: ""
+          });
+        }
+      }
+      return matches;
+    }
+
+    function renderMatches(courtId) {
+      const container = $("matchesContainer");
+      container.innerHTML = "";
+      const state = loadState(courtId);
+      if (!state.matches || state.matches.length === 0) {
+        container.innerHTML = '<p class="text-slate-500 text-sm">No hay partidos generados. Usa “Generar partido(s)”.</p>';
+        return;
+      }
+      state.matches.forEach((m, idx) => {
+        const card = document.createElement("div");
+        card.className = "border rounded-2xl p-4";
+        card.innerHTML = \`
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="font-semibold">Partido \${idx+1}</div>
+            <div class="pill border-gray-300 text-slate-600">A 3 juegos (gana quien llegue a 3)</div>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-4 mt-3">
+            <div class="space-y-1">
+              <div class="text-sm text-slate-500 mb-1">Equipo A</div>
+              <div class="font-medium">\${m.t1.join(" & ")}</div>
+              <label class="label mt-2">Juegos</label>
+              <select data-idx="\${idx}" data-side="a" class="select score">
+                <option value="">-</option>
+                <option value="0">0</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+            </div>
+            <div class="space-y-1">
+              <div class="text-sm text-slate-500 mb-1">Equipo B</div>
+              <div class="font-medium">\${m.t2.join(" & ")}</div>
+              <label class="label mt-2">Juegos</label>
+              <select data-idx="\${idx}" data-side="b" class="select score">
+                <option value="">-</option>
+                <option value="0">0</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+            </div>
+          </div>
+          <div class="mt-3">
+            <label class="label">Comentario</label>
+            <input data-idx="\${idx}" class="input comment" placeholder="Ej. Doble falta Alex, gran volea de Luis, etc." value="\${m.comment ? m.comment.replaceAll('"','&quot;') : ""}" />
+          </div>
+          <div class="mt-3 flex gap-2">
+            <button data-idx="\${idx}" class="btn btn-primary save-match">Guardar resultado</button>
+            <button data-idx="\${idx}" class="btn btn-outline clear-match">Limpiar</button>
+          </div>
+        \`;
+        container.appendChild(card);
+      });
+
+      // attach listeners
+      container.querySelectorAll(".score").forEach(sel => {
+        sel.addEventListener("change", (e) => {
+          const st = loadState(courtId);
+          const i = parseInt(e.target.dataset.idx, 10);
+          const side = e.target.dataset.side;
+          const val = e.target.value ? parseInt(e.target.value, 10) : null;
+          st.matches[i].score[side] = val;
+          saveState(courtId, st);
+        });
+      });
+      container.querySelectorAll(".comment").forEach(inp => {
+        inp.addEventListener("input", (e) => {
+          const st = loadState(courtId);
+          const i = parseInt(e.target.dataset.idx, 10);
+          st.matches[i].comment = e.target.value;
+          saveState(courtId, st);
+        });
+      });
+      container.querySelectorAll(".save-match").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const st = loadState(courtId);
+          const i = parseInt(e.target.dataset.idx, 10);
+          const m = st.matches[i];
+          // Validación: a 3 juegos (uno debe ser 3 y el otro <3)
+          const a = m.score.a, b = m.score.b;
+          if (a === null || b === null) {
+            alert("Completa los juegos de ambos equipos (0–3).");
+            return;
+          }
+          if (!((a === 3 && b < 3) || (b === 3 && a < 3))) {
+            alert("Formato: gana quien llega a 3. Ejemplos válidos: 3-0, 3-1, 3-2, 0-3, 1-3, 2-3.");
+            return;
+          }
+          // Guardar en historial
+          const winner = a > b ? "A" : "B";
+          st.history.unshift({
+            when: new Date().toISOString(),
+            t1: m.t1, t2: m.t2,
+            score: { a, b },
+            winner,
+            comment: m.comment || ""
+          });
+          // Eliminar de la lista de partidos actuales
+          st.matches.splice(i, 1);
+          saveState(courtId, st);
+          renderMatches(courtId);
+          renderHistory(courtId);
+        });
+      });
+      container.querySelectorAll(".clear-match").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const st = loadState(courtId);
+          const i = parseInt(e.target.dataset.idx, 10);
+          st.matches[i].score = { a: null, b: null };
+          st.matches[i].comment = "";
+          saveState(courtId, st);
+          renderMatches(courtId);
+        });
+      });
+    }
+
+    function renderHistory(courtId) {
+      const cont = $("historyContainer");
+      const st = loadState(courtId);
+      cont.innerHTML = "";
+      if (!st.history || st.history.length === 0) {
+        cont.innerHTML = '<p class="text-slate-500 text-sm">Sin resultados guardados.</p>';
+        return;
+      }
+      st.history.forEach((h, idx) => {
+        const row = document.createElement("div");
+        row.className = "border rounded-2xl p-4";
+        const d = new Date(h.when);
+        const ts = d.toLocaleString();
+        row.innerHTML = \`
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="font-semibold">Resultado \${idx+1}</div>
+            <div class="text-xs text-slate-500">\${ts}</div>
+          </div>
+          <div class="grid sm:grid-cols-3 gap-3 mt-2">
+            <div>
+              <div class="text-sm text-slate-500">Equipo A</div>
+              <div class="font-medium">\${h.t1.join(" & ")}</div>
+            </div>
+            <div>
+              <div class="text-sm text-slate-500">Equipo B</div>
+              <div class="font-medium">\${h.t2.join(" & ")}</div>
+            </div>
+            <div>
+              <div class="text-sm text-slate-500">Marcador</div>
+              <div class="font-semibold">\${h.score.a} – \${h.score.b} <span class="ml-2 text-xs pill border-gray-300">\${h.winner === "A" ? "Ganó A" : "Ganó B"}</span></div>
+            </div>
+          </div>
+          \${h.comment ? \`<div class="mt-2 text-sm"><span class="text-slate-500">Comentario:</span> \${h.comment}</div>\` : ""}
+        \`;
+        cont.appendChild(row);
+      });
+    }
+
+    // ====== App wiring ======
+    $("btnGoLogin").addEventListener("click", () => {
+      hide($("landing"));
+      show($("login"));
+    });
+
+    $("btnLogin").addEventListener("click", () => {
+      const pass = $("password").value.trim();
+      if (pass === PASSWORD) {
+        hide($("login"));
+        $("login").classList.remove("flex");
+        $("app").classList.remove("hidden");
+      } else {
+        $("loginMsg").classList.remove("hidden");
+      }
+    });
+
+    $("btnLogout").addEventListener("click", () => {
+      $("app").classList.add("hidden");
+      show($("login"));
+      $("password").value = "";
+      $("loginMsg").classList.add("hidden");
+    });
+
+    // Court & UI init
+    function initCourtUI() {
+      const courtId = $("selectCourt").value;
+      const state = loadState(courtId);
+      // Resize players array to MAX_PLAYERS for safety
+      if (!state.players) state.players = Array(MAX_PLAYERS).fill("");
+      if (!state.matches) state.matches = [];
+      if (!state.history) state.history = [];
+      // Update roster grid
+      updateRosterUI(state);
+      // Render matches & history
+      renderMatches(courtId);
+      renderHistory(courtId);
+    }
+
+    $("selectCourt").addEventListener("change", initCourtUI);
+    $("selectPlayers").addEventListener("change", () => {
+      const courtId = $("selectCourt").value;
+      const state = loadState(courtId);
+      updateRosterUI(state);
+    });
+
+    $("btnSaveRoster").addEventListener("click", () => {
+      const courtId = $("selectCourt").value;
+      const st = loadState(courtId);
+      const n = parseInt($("selectPlayers").value, 10);
+      // Read inputs
+      const inputs = Array.from(document.querySelectorAll("#rosterList .player-input"));
+      const names = inputs.map(i => (i.value || "").trim()).slice(0, n);
+      st.players = Array(MAX_PLAYERS).fill("");
+      for (let i=0;i<names.length;i++) st.players[i] = names[i];
+      saveState(courtId, st);
+      updateRosterUI(st);
+      alert("Jugadores guardados.");
+    });
+
+    $("btnGenerate").addEventListener("click", () => {
+      const courtId = $("selectCourt").value;
+      const st = loadState(courtId);
+      const matches = makePairsForRound(st.players);
+      if (matches.length === 0) {
+        alert("Necesitas al menos 4 jugadores con nombre para generar partidos.");
+        return;
+      }
+      st.matches = matches;
+      saveState(courtId, st);
+      renderMatches(courtId);
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    });
+
+    $("btnClearMatches").addEventListener("click", () => {
+      const courtId = $("selectCourt").value;
+      const st = loadState(courtId);
+      st.matches = [];
+      saveState(courtId, st);
+      renderMatches(courtId);
+    });
+
+    $("btnClearAll").addEventListener("click", () => {
+      if (!confirm("¿Borrar historial y partidos actuales de esta cancha?")) return;
+      const courtId = $("selectCourt").value;
+      const st = { players: loadState(courtId).players, matches: [], history: [] };
+      saveState(courtId, st);
+      renderMatches(courtId);
+      renderHistory(courtId);
+    });
+
+    // Bootstrap
+    initCourtUI();
+  </script>
+</body>
+</html>
