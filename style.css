@@ -1,1 +1,9 @@
-/* Tailwind maneja casi todo en v1.2 */
+/* style.css v1.3 */
+@keyframes spin-slow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 1.6s linear infinite;
+}
+.logo-ball { transition: transform .2s ease; }
