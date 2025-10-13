@@ -173,6 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
         el.innerHTML = `
           <div class="flex items-center gap-3">
             <span class="text-sm font-semibold w-5 text-right">${idx + 1}.</span>
+
             <span class="inline-flex w-8 h-8 rounded-full bg-emerald-600 text-white items-center justify-center font-bold">${(j.nombre||'?').slice(0,1).toUpperCase()}</span>
             <div>
               <div class="font-semibold">${j.nombre}</div>
