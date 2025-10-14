@@ -1,7 +1,6 @@
-/* Padel-Americano Zacatecas v1.6+fix-enter */
+/* Padel-Americano Zacatecas v1.7 – rondas consistentes + botón iniciar bloqueado */
 
 (function () {
-  // Expondremos una API mínima para el fallback inline
   window.PAZ = window.PAZ || {};
 
   // ----- Estado -----
@@ -10,19 +9,20 @@
     courts: 1,
     pointsToWin: 3,
     round: 0,
-    matches: [],
+    matches: [],        // partidos de la ronda ACTUAL (máx = courts)
     results: [],
     standings: {},
     lastRested: [],
+    started: false       // <- para bloquear “Iniciar Americano” una vez arrancado
   };
 
-  // ----- Nodos (se asignan en init) -----
+  // ----- Nodos -----
   let cover, app, enterBtn, exitBtn;
   let pointsSelect, courtsSelect, playerInput, addPlayerBtn;
   let startBtn, nextRoundBtn, nextAvailBtn, resetBtn;
   let playersList, matchesArea, standingsArea, roundLabel;
 
-  // ----- Inicializador robusto -----
+  // ----- Init robusto -----
   function initUI() {
     cover       = document.getElementById('cover');
     app         = document.getElementById('app');
@@ -41,23 +41,21 @@
     standingsArea=document.getElementById('standingsArea');
     roundLabel  = document.getElementById('roundLabel');
 
-    // Si por alguna razón aún no existen (carga muy temprana), reintenta
-    if (!cover || !app || !enterBtn) {
-      setTimeout(initUI, 50);
-      return;
-    }
+    if (!cover || !app || !enterBtn) { setTimeout(initUI, 50); return; }
 
-    // Listeners directos
     if (enterBtn) enterBtn.addEventListener('click', onEnter);
     if (exitBtn)  exitBtn.addEventListener('click', onExit);
+    document.addEventListener('click', (e)=>{ if(e.target?.id==='enterBtn') onEnter(); });
+    window.PAZ.enter = onEnter;
 
     pointsSelect.addEventListener('change', () => {
       state.pointsToWin = parseInt(pointsSelect.value, 10);
       persist();
     });
-
     courtsSelect.addEventListener('change', () => {
       state.courts = parseInt(courtsSelect.value, 10);
+      // Nota: si cambias canchas con torneo activo, la ronda actual
+      // solo podrá abrir hasta ‘courts’ partidos. Persistimos.
       persist();
     });
 
@@ -69,15 +67,7 @@
     nextAvailBtn.addEventListener('click', generateFromAvailable);
     resetBtn.addEventListener('click', confirmReset);
 
-    // Delegación global como tercera defensa
-    document.addEventListener('click', (e) => {
-      if (e.target && e.target.id === 'enterBtn') onEnter();
-    });
-
-    // API global para fallback inline
-    window.PAZ.enter = onEnter;
-
-    // Defaults + cargar estado
+    // Defaults + cargar
     state.pointsToWin = parseInt(pointsSelect.value || '3', 10);
     state.courts = parseInt(courtsSelect.value || '1', 10);
 
@@ -85,196 +75,195 @@
     renderAll();
   }
 
-  function onEnter() {
-    cover.classList.add('hidden');
-    app.classList.remove('hidden');
-    // si por algún motivo no se cargó estado antes:
-    if (!roundLabel.textContent) {
-      loadFromStorage();
-      renderAll();
-    }
-  }
-
-  function onExit() {
-    app.classList.add('hidden');
-    cover.classList.remove('hidden');
-  }
+  function onEnter(){ cover.classList.add('hidden'); app.classList.remove('hidden'); }
+  function onExit(){ app.classList.add('hidden'); cover.classList.remove('hidden'); }
 
   // ----- Storage -----
-  function persist() {
-    localStorage.setItem('pa_state_v16', JSON.stringify(state));
-  }
-  function loadFromStorage() {
-    const raw = localStorage.getItem('pa_state_v16');
-    if (!raw) return;
-    try {
-      const saved = JSON.parse(raw);
-      Object.assign(state, saved);
-      if (!Array.isArray(state.players)) state.players = [];
-      if (!Array.isArray(state.matches)) state.matches = [];
-      if (!Array.isArray(state.lastRested)) state.lastRested = [];
-      if (!state.standings) state.standings = {};
-      pointsSelect.value = String(state.pointsToWin || 3);
-      courtsSelect.value = String(state.courts || 1);
-    } catch {}
+  function persist(){ localStorage.setItem('pa_state_v17', JSON.stringify(state)); }
+  function loadFromStorage(){
+    const raw = localStorage.getItem('pa_state_v17'); if(!raw) return;
+    try{
+      const saved = JSON.parse(raw); Object.assign(state, saved);
+      if(!Array.isArray(state.players)) state.players=[];
+      if(!Array.isArray(state.matches)) state.matches=[];
+      if(!Array.isArray(state.lastRested)) state.lastRested=[];
+      if(!state.standings) state.standings={};
+      pointsSelect.value = String(state.pointsToWin||3);
+      courtsSelect.value = String(state.courts||1);
+    }catch{}
   }
 
-  // ----- Utilidades -----
-  function shuffle(a) {
-    const arr = a.slice();
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-  }
-  function ensureStatsFor(n) {
-    if (!state.standings[n]) {
-      state.standings[n] = { PJ:0, PG:0, PP:0, JF:0, JC:0, Dif:0, Pts:0 };
-    }
-  }
+  // ----- Utils -----
+  function shuffle(a){ const arr=a.slice(); for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]];} return arr; }
+  function ensureStatsFor(n){ if(!state.standings[n]) state.standings[n]={PJ:0,PG:0,PP:0,JF:0,JC:0,Dif:0,Pts:0}; }
 
   // ----- Jugadores -----
-  function addPlayer() {
-    const name = (playerInput.value || '').trim();
-    if (!name) return;
-    if (state.players.includes(name)) {
-      alert('Ese nombre ya está en la lista.');
-      return;
-    }
-    state.players.push(name);
-    ensureStatsFor(name);
-    playerInput.value = '';
-    persist();
-    renderPlayers();
+  function addPlayer(){
+    const name=(playerInput.value||'').trim(); if(!name) return;
+    if(state.players.includes(name)) return alert('Ese nombre ya está en la lista.');
+    if(state.started) return alert('No puedes agregar jugadores con el Americano en curso.');
+    state.players.push(name); ensureStatsFor(name);
+    playerInput.value=''; persist(); renderPlayers();
   }
-  function removePlayer(name) {
-    if (state.round > 0) { alert('No puedes eliminar jugadores con el Americano en curso.'); return; }
-    state.players = state.players.filter(p => p !== name);
+  function removePlayer(name){
+    if(state.started) return alert('No puedes eliminar jugadores con el Americano en curso.');
+    state.players = state.players.filter(p=>p!==name);
     persist(); renderPlayers();
   }
 
   // ----- Emparejar -----
-  function generateRound(poolPlayers, maxMatches, lastRested = []) {
-    const shuffled = shuffle(poolPlayers);
-    const prio = shuffled.filter(p => !lastRested.includes(p))
-      .concat(shuffled.filter(p => lastRested.includes(p)));
-
-    const matches = [];
-    const used = new Set();
-
-    for (let i = 0; i < prio.length; ) {
-      if (matches.length >= maxMatches) break;
-      const block = [];
-      while (i < prio.length && block.length < 4) {
-        const cand = prio[i++];
-        if (!used.has(cand)) { used.add(cand); block.push(cand); }
+  function generateRound(poolPlayers, maxMatches, lastRested=[]){
+    const shuffled=shuffle(poolPlayers);
+    const prio=shuffled.filter(p=>!lastRested.includes(p)).concat(shuffled.filter(p=>lastRested.includes(p)));
+    const matches=[], used=new Set();
+    for(let i=0;i<prio.length;){
+      if(matches.length>=maxMatches) break;
+      const block=[];
+      while(i<prio.length && block.length<4){
+        const c=prio[i++]; if(!used.has(c)){used.add(c); block.push(c);}
       }
-      if (block.length === 4) matches.push(block);
+      if(block.length===4) matches.push(block);
     }
-    const rest = prio.filter(p => !used.has(p));
-    return { matches, rest };
+    const rest=prio.filter(p=>!used.has(p));
+    return {matches, rest};
   }
-  function currentBusyPlayers() {
-    const busy = new Set();
-    state.matches.forEach(m => {
-      if (m.status === 'open') m.pairs.flat().forEach(p => busy.add(p));
-    });
+  function currentBusyPlayers(){
+    const busy=new Set();
+    state.matches.forEach(m=>{ if(m.status==='open') m.pairs.flat().forEach(p=>busy.add(p)); });
     return busy;
   }
 
   // ----- Torneo -----
-  function startTournament() {
-    if (state.players.length < 4) { alert('Necesitas al menos 4 jugadores.'); return; }
-    if (state.round > 0 && state.matches.some(m => m.status === 'open')) {
-      alert('Hay partidos abiertos. Termina o regístralos antes.'); return;
+  function startTournament(){
+    if(state.started){
+      alert('El Americano ya está iniciado. Usa “Borrar jornada” para reiniciar.');
+      return;
     }
-    state.round = 1;
-    roundLabel.textContent = `${state.round}`;
-    state.matches = []; state.results = [];
-    const { matches, rest } = generateRound(state.players, state.courts, state.lastRested);
-    state.matches = matches.map((b, i) => ({
-      court: i+1, pairs: [[b[0],b[1]],[b[2],b[3]]], status:'open', result:null
-    }));
-    state.lastRested = rest;
-    nextAvailBtn.classList.remove('hidden'); nextRoundBtn.classList.add('hidden');
+    if(state.players.length<4){ alert('Necesitas al menos 4 jugadores.'); return; }
+
+    state.started=true;
+    startBtn.disabled=true; startBtn.classList.add('opacity-50','cursor-not-allowed');
+
+    state.round=1; roundLabel.textContent=`${state.round}`;
+    state.matches=[]; state.results=[];
+    const {matches, rest} = generateRound(state.players, state.courts, state.lastRested);
+    state.matches = matches.map((b,i)=>({court:i+1,pairs:[[b[0],b[1]],[b[2],b[3]]],status:'open',result:null}));
+    state.lastRested=rest;
+
+    nextAvailBtn.classList.remove('hidden');
+    nextRoundBtn.classList.add('hidden');
+
     persist(); renderAll();
   }
 
-  function generateFromAvailable() {
-    const busy = currentBusyPlayers();
-    const available = state.players.filter(p => !busy.has(p));
-    const remain = available.filter(p => !state.lastRested.includes(p));
-    const openCourts = state.courts - state.matches.filter(m => m.status === 'open').length;
-    if (openCourts <= 0) return alert('No hay canchas libres por ahora.');
-    const maxNew = Math.min(openCourts, Math.floor(remain.length / 4));
-    if (maxNew <= 0) return alert('No hay suficientes jugadores disponibles.');
-    const { matches, rest } = generateRound(remain, maxNew, state.lastRested);
+  // **Sólo rellena canchas libres DENTRO de la ronda actual.**
+  function generateFromAvailable(){
+    if(!state.started){ alert('Primero inicia el Americano.'); return; }
 
+    // Si ya hay tantos partidos como canchas en esta ronda, no permitimos más.
+    const totalThisRound = state.matches.length;
+    if (totalThisRound >= state.courts) {
+      alert('La ronda actual ya tiene todos sus partidos. Registra resultados o avanza de ronda.');
+      return;
+    }
+
+    const open = state.matches.filter(m=>m.status==='open').length;
+    const openCourts = state.courts - open;        // canchas libres EN ESTA RONDA
+    const remainingSlots = state.courts - state.matches.length; // partidos que aún puede aceptar la ronda
+    const capacity = Math.min(openCourts, remainingSlots);
+    if (capacity <= 0) {
+      alert('No hay canchas libres en esta ronda.');
+      return;
+    }
+
+    const busy = currentBusyPlayers();
+    const available = state.players.filter(p=>!busy.has(p));
+    const remainNoRest = available.filter(p=>!state.lastRested.includes(p));
+    const maxNew = Math.min(capacity, Math.floor(remainNoRest.length/4));
+    if (maxNew <= 0) {
+      alert('No hay suficientes jugadores disponibles para abrir un nuevo partido en esta ronda.');
+      return;
+    }
+
+    const {matches, rest} = generateRound(remainNoRest, maxNew, state.lastRested);
     let nextCourt = state.matches.length + 1;
-    matches.forEach(b => {
-      state.matches.push({ court: nextCourt++, pairs:[[b[0],b[1]],[b[2],b[3]]], status:'open', result:null });
+    matches.forEach(b=>{
+      state.matches.push({court:nextCourt++,pairs:[[b[0],b[1]],[b[2],b[3]]],status:'open',result:null});
     });
-    state.lastRested = rest;
+    state.lastRested=rest;
+
+    // Si ya completamos todos los partidos de la ronda, ocultamos el botón.
+    if (state.matches.length >= state.courts) nextAvailBtn.classList.add('hidden');
+
     persist(); renderMatches();
   }
 
-  function nextRoundGlobal() {
-    if (!state.matches.every(m => m.status === 'done')) { alert('Aún hay partidos abiertos.'); return; }
-    state.round += 1; roundLabel.textContent = `${state.round}`;
-    state.matches = []; state.results = [];
-    const { matches, rest } = generateRound(state.players, state.courts, state.lastRested);
-    state.matches = matches.map((b, i) => ({
-      court: i+1, pairs:[[b[0],b[1]],[b[2],b[3]]], status:'open', result:null
-    }));
-    state.lastRested = rest;
-    nextRoundBtn.classList.add('hidden'); nextAvailBtn.classList.remove('hidden');
+  function nextRoundGlobal(){
+    // Solo si todos los partidos de la ronda están registrados
+    if(!state.matches.length || !state.matches.every(m=>m.status==='done')){
+      alert('Aún hay partidos abiertos en esta ronda.'); return;
+    }
+    state.round+=1; roundLabel.textContent=`${state.round}`;
+    state.matches=[]; state.results=[];
+
+    const {matches, rest}=generateRound(state.players, state.courts, state.lastRested);
+    state.matches=matches.map((b,i)=>({court:i+1,pairs:[[b[0],b[1]],[b[2],b[3]]],status:'open',result:null}));
+    state.lastRested=rest;
+
+    // Nueva ronda: puedes intentar rellenar canchas libres si no se llenaron
+    nextAvailBtn.classList.remove('hidden');
+    nextRoundBtn.classList.add('hidden');
+
     persist(); renderAll();
   }
 
-  function confirmReset() {
-    const ok = confirm('¿Deseas borrar la jornada y reiniciar todo?');
-    if (!ok) return;
-    Object.assign(state, {
-      players: [], courts: parseInt(courtsSelect.value||'1',10),
+  function confirmReset(){
+    const ok=confirm('¿Deseas borrar la jornada y reiniciar todo?'); if(!ok) return;
+    Object.assign(state,{
+      players: [],
+      courts: parseInt(courtsSelect.value||'1',10),
       pointsToWin: parseInt(pointsSelect.value||'3',10),
-      round: 0, matches: [], results: [], standings: {}, lastRested: []
+      round: 0, matches: [], results: [], standings: {}, lastRested: [],
+      started: false
     });
+    // Reactivar botón iniciar
+    startBtn.disabled=false; startBtn.classList.remove('opacity-50','cursor-not-allowed');
+
     persist(); renderAll();
   }
 
   // ----- Standings -----
-  function ensureStatsFor(n){ if(!state.standings[n]) state.standings[n]={PJ:0,PG:0,PP:0,JF:0,JC:0,Dif:0,Pts:0}; }
-  function applyMatchToStandings(pairA, pairB, a, b) {
-    const winA = a > b;
-    pairA.forEach(p => ensureStatsFor(p));
-    pairB.forEach(p => ensureStatsFor(p));
-    pairA.forEach(p => { const s=state.standings[p]; s.PJ++; s.JF+=a; s.JC+=b; s.Dif+=a-b; if(winA){s.PG++;s.Pts+=2;} else s.PP++; });
-    pairB.forEach(p => { const s=state.standings[p]; s.PJ++; s.JF+=b; s.JC+=a; s.Dif+=b-a; if(!winA){s.PG++;s.Pts+=2;} else s.PP++; });
+  function applyMatchToStandings(pairA, pairB, a, b){
+    const winA=a>b; pairA.forEach(p=>ensureStatsFor(p)); pairB.forEach(p=>ensureStatsFor(p));
+    pairA.forEach(p=>{ const s=state.standings[p]; s.PJ++; s.JF+=a; s.JC+=b; s.Dif+=a-b; if(winA){s.PG++; s.Pts+=2;} else s.PP++; });
+    pairB.forEach(p=>{ const s=state.standings[p]; s.PJ++; s.JF+=b; s.JC+=a; s.Dif+=b-a; if(!winA){s.PG++; s.Pts+=2;} else s.PP++; });
   }
 
   // ----- Render -----
-  function renderAll(){ renderPlayers(); renderMatches(); renderStandings(); roundLabel.textContent = `${state.round||0}`; }
-
-  function renderPlayers() {
-    playersList.innerHTML = '';
-    const col = document.createElement('div');
-    col.className = 'bg-white rounded-xl shadow p-4 md:col-span-2';
-    col.innerHTML = `<div class="text-gray-700 font-semibold mb-3">Jugadores (máx. 8 por cancha):</div>`;
-    const wrap = document.createElement('div'); wrap.className='grid grid-cols-1 md:grid-cols-2 gap-3';
+  function renderAll(){ renderPlayers(); renderMatches(); renderStandings(); roundLabel.textContent=`${state.round||0}`; }
+  function renderPlayers(){
+    playersList.innerHTML='';
+    const col=document.createElement('div'); col.className='bg-white rounded-xl shadow p-4 md:col-span-2';
+    col.innerHTML=`<div class="text-gray-700 font-semibold mb-3">Jugadores (máx. 8 por cancha):</div>`;
+    const wrap=document.createElement('div'); wrap.className='grid grid-cols-1 md:grid-cols-2 gap-3';
     state.players.forEach((p,i)=>{
       const row=document.createElement('div'); row.className='flex items-center gap-2';
       row.innerHTML=`
         <span class="inline-block w-8 text-gray-500">${i+1}.</span>
         <input type="text" value="${p}" class="flex-1 border rounded px-3 py-2" disabled />
         <button class="text-red-500 text-sm underline">quitar</button>`;
-      row.querySelector('button').addEventListener('click',()=>removePlayer(p));
+      const btn=row.querySelector('button'); btn.disabled=state.started;
+      btn.addEventListener('click',()=>removePlayer(p));
       wrap.appendChild(row);
     });
     col.appendChild(wrap); playersList.appendChild(col);
+
+    // Botón iniciar (bloqueado si started)
+    if(state.started){ startBtn.disabled=true; startBtn.classList.add('opacity-50','cursor-not-allowed'); }
+    else { startBtn.disabled=false; startBtn.classList.remove('opacity-50','cursor-not-allowed'); }
   }
 
-  function renderMatches() {
+  function renderMatches(){
     matchesArea.innerHTML='';
     const box=document.createElement('div'); box.className='bg-white rounded-xl shadow p-4';
     box.innerHTML='<div class="text-gray-700 font-semibold mb-3">Partidos actuales:</div>';
@@ -282,8 +271,7 @@
     state.matches.forEach((m,i)=>{
       const [a1,a2]=m.pairs[0]; const [b1,b2]=m.pairs[1];
       const card=document.createElement('div'); card.className='border rounded p-3 mb-3';
-      const badge=(m.status==='done')
-        ? '<span class="ml-2 inline-block text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">Registrado</span>' : '';
+      const badge=(m.status==='done')?'<span class="ml-2 inline-block text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">Registrado</span>':'';
       card.innerHTML=`
         <div class="font-semibold mb-2">Cancha ${m.court}:${badge}</div>
         <div class="mb-2">${a1} &amp; ${a2} <span class="mx-2">🆚</span> ${b1} &amp; ${b2}</div>
@@ -317,8 +305,11 @@
         state.matches[i].status='done'; state.matches[i].result={a,b};
         okSp.textContent='✔ Registrado'; inpA.disabled=inpB.disabled=btnR.disabled=true;
 
-        if(state.matches.every(mm=>mm.status==='done')) nextRoundBtn.classList.remove('hidden');
-        nextAvailBtn.classList.remove('hidden');
+        // ¿Se completó la ronda?
+        const doneAll = state.matches.length>0 && state.matches.every(mm=>mm.status==='done');
+        if(doneAll){ nextRoundBtn.classList.remove('hidden'); nextAvailBtn.classList.add('hidden'); }
+        else{ nextAvailBtn.classList.remove('hidden'); }
+
         persist();
       });
     });
@@ -328,9 +319,13 @@
     rest.textContent=`Descansan: ${resting.join(', ')||'—'}`;
     box.appendChild(rest);
     matchesArea.appendChild(box);
+
+    // Si ya hay tantos partidos como canchas en esta ronda, oculta “generar disponibles”
+    if(state.matches.length>=state.courts) nextAvailBtn.classList.add('hidden');
+    else nextAvailBtn.classList.remove('hidden');
   }
 
-  function renderStandings() {
+  function renderStandings(){
     standingsArea.innerHTML='';
     const box=document.createElement('div'); box.className='bg-white rounded-xl shadow p-4';
     box.innerHTML='<div class="text-gray-700 font-semibold mb-3">Tabla de posiciones</div>';
@@ -354,6 +349,5 @@
     box.appendChild(tbl); standingsArea.appendChild(box);
   }
 
-  // Arranque inmediato (sin defer)
   initUI();
 })();
