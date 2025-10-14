@@ -1,43 +1,50 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Padel-Americano Zacatecas</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="./style.css" />
+  <!-- Carga el script como módulo; no bloquea el parseo -->
   <script type="module" src="./script.js" defer></script>
 </head>
-<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
 
-  <!-- Logo -->
-  <div class="absolute top-4 right-6 flex items-center space-x-2">
-    <img src="./assets/ball.svg" alt="Pelota de pádel" class="w-8 h-8 animate-spin-slow">
+  <!-- Logo (pelota girando) -->
+  <div class="absolute top-4 right-6">
+    <img src="./assets/ball.svg" alt="Pelota" class="w-8 h-8 animate-spin-slow">
   </div>
 
-  <!-- Login -->
+  <!-- Pantalla: login -->
   <div id="login-screen" class="text-center">
     <h1 class="text-3xl font-bold mb-2 text-green-700">Padel-Americano Zacatecas 🎾</h1>
     <p class="text-gray-600 mb-4">Sistema de emparejamientos automáticos</p>
-    <button id="enterBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Entrar</button>
+    <button id="enterBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+      Entrar
+    </button>
   </div>
 
-  <!-- Password -->
+  <!-- Pantalla: password -->
   <div id="password-screen" class="hidden text-center">
     <h2 class="text-2xl font-semibold mb-2">🔒 Acceso protegido</h2>
     <input type="password" id="passwordInput" class="border p-2 rounded" placeholder="Contraseña">
-    <button id="loginBtn" class="ml-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded">Entrar</button>
+    <button id="loginBtn" class="ml-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded">
+      Entrar
+    </button>
     <p id="errorMsg" class="text-red-500 mt-2 hidden">Contraseña incorrecta</p>
   </div>
 
-  <!-- Main -->
+  <!-- Pantalla: principal -->
   <div id="main-screen" class="hidden w-full max-w-3xl bg-white shadow-md rounded-lg p-6">
+
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-2xl font-bold text-green-700">Americano Zacatecas</h2>
       <div class="text-gray-600 text-sm" id="roundCounter">Ronda 0 de 0</div>
     </div>
 
-    <!-- Config -->
-    <div class="flex justify-between mb-4">
+    <!-- Configuración -->
+    <div class="flex justify-between mb-4 gap-4">
       <div>
         <label class="font-semibold mr-2">Puntos por partido:</label>
         <select id="pointsSelect" class="border rounded px-2 py-1">
@@ -62,14 +69,22 @@
     <div id="playersSection" class="mb-6">
       <h3 class="text-lg font-semibold mb-2">Jugadores (máx. 8 por cancha):</h3>
       <div id="playersList" class="grid grid-cols-2 gap-2"></div>
-      <button id="addPlayerBtn" class="mt-2 bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded">Agregar jugador</button>
+      <button id="addPlayerBtn" class="mt-2 bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded">
+        Agregar jugador
+      </button>
     </div>
 
     <!-- Controles -->
-    <div class="flex justify-center space-x-4">
-      <button id="startBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Iniciar Americano</button>
-      <button id="nextRoundBtn" class="hidden bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded">Siguiente ronda</button>
-      <button id="resetBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Borrar jornada</button>
+    <div class="flex justify-center gap-4">
+      <button id="startBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+        Iniciar Americano
+      </button>
+      <button id="nextRoundBtn" class="hidden bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded">
+        Siguiente ronda
+      </button>
+      <button id="resetBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+        Borrar jornada
+      </button>
     </div>
 
     <!-- Partidos -->
@@ -84,7 +99,9 @@
     </div>
 
     <div class="text-center mt-6">
-      <button id="logoutBtn" class="bg-gray-500 hover:bg-gray-600 text-white py-1 px-3 rounded">Salir</button>
+      <button id="logoutBtn" class="bg-gray-500 hover:bg-gray-600 text-white py-1 px-3 rounded">
+        Salir
+      </button>
     </div>
   </div>
 
