@@ -7,22 +7,21 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script type="module" src="./script.js" defer></script>
 </head>
-
 <body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
 
-  <!-- Logo y título -->
+  <!-- Logo -->
   <div class="absolute top-4 right-6 flex items-center space-x-2">
     <img src="./assets/ball.svg" alt="Pelota de pádel" class="w-8 h-8 animate-spin-slow">
   </div>
 
-  <!-- Pantalla de login -->
+  <!-- Login -->
   <div id="login-screen" class="text-center">
     <h1 class="text-3xl font-bold mb-2 text-green-700">Padel-Americano Zacatecas 🎾</h1>
     <p class="text-gray-600 mb-4">Sistema de emparejamientos automáticos</p>
     <button id="enterBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Entrar</button>
   </div>
 
-  <!-- Pantalla de contraseña -->
+  <!-- Password -->
   <div id="password-screen" class="hidden text-center">
     <h2 class="text-2xl font-semibold mb-2">🔒 Acceso protegido</h2>
     <input type="password" id="passwordInput" class="border p-2 rounded" placeholder="Contraseña">
@@ -30,16 +29,14 @@
     <p id="errorMsg" class="text-red-500 mt-2 hidden">Contraseña incorrecta</p>
   </div>
 
-  <!-- Pantalla principal -->
+  <!-- Main -->
   <div id="main-screen" class="hidden w-full max-w-3xl bg-white shadow-md rounded-lg p-6">
-
-    <!-- Encabezado -->
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-2xl font-bold text-green-700">Americano Zacatecas</h2>
       <div class="text-gray-600 text-sm" id="roundCounter">Ronda 0 de 0</div>
     </div>
 
-    <!-- Selector de configuración -->
+    <!-- Config -->
     <div class="flex justify-between mb-4">
       <div>
         <label class="font-semibold mr-2">Puntos por partido:</label>
@@ -50,7 +47,6 @@
           <option value="7">7</option>
         </select>
       </div>
-
       <div>
         <label class="font-semibold mr-2">Canchas:</label>
         <select id="courtsSelect" class="border rounded px-2 py-1">
@@ -62,21 +58,21 @@
       </div>
     </div>
 
-    <!-- Lista de jugadores -->
+    <!-- Jugadores -->
     <div id="playersSection" class="mb-6">
       <h3 class="text-lg font-semibold mb-2">Jugadores (máx. 8 por cancha):</h3>
       <div id="playersList" class="grid grid-cols-2 gap-2"></div>
       <button id="addPlayerBtn" class="mt-2 bg-green-600 hover:bg-green-700 text-white py-1 px-3 rounded">Agregar jugador</button>
     </div>
 
-    <!-- Controles principales -->
+    <!-- Controles -->
     <div class="flex justify-center space-x-4">
       <button id="startBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Iniciar Americano</button>
       <button id="nextRoundBtn" class="hidden bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded">Siguiente ronda</button>
       <button id="resetBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Borrar jornada</button>
     </div>
 
-    <!-- Resultados -->
+    <!-- Partidos -->
     <div id="matchesSection" class="mt-6 hidden">
       <h3 class="text-lg font-semibold mb-2">Partidos actuales:</h3>
       <div id="matchesList" class="space-y-4"></div>
@@ -95,6 +91,5 @@
   <footer class="mt-10 text-gray-500 text-sm text-center">
     Desarrollado por Roberto Cabral
   </footer>
-
 </body>
 </html>
