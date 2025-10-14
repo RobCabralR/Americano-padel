@@ -1,7 +1,8 @@
-// ===== CONFIG =====
+// ====== CONFIG ======
 const PASSWORD = "Padel2025";
+const SESSION_KEY = () => `americano:${new Date().toISOString().slice(0,10)}`;
 
-// ===== REFS UI =====
+// ====== UI REFS ======
 const enterBtn = document.getElementById('enterBtn');
 const loginBtn = document.getElementById('loginBtn');
 const passwordInput = document.getElementById('passwordInput');
@@ -10,11 +11,17 @@ const passwordScreen = document.getElementById('password-screen');
 const mainScreen = document.getElementById('main-screen');
 const errorMsg = document.getElementById('errorMsg');
 
+const pointsSelect = document.getElementById('pointsSelect');
+const courtsSelect = document.getElementById('courtsSelect');
+
+const playerNameInput = document.getElementById('playerNameInput');
+const addPlayerBtn = document.getElementById('addPlayerBtn');
+const playersList = document.getElementById('playersList');
+
 const startBtn = document.getElementById('startBtn');
 const nextRoundBtn = document.getElementById('nextRoundBtn');
 const resetBtn = document.getElementById('resetBtn');
-const playersList = document.getElementById('playersList');
-const addPlayerBtn = document.getElementById('addPlayerBtn');
+
 const matchesSection = document.getElementById('matchesSection');
 const matchesList = document.getElementById('matchesList');
 const restSection = document.getElementById('restSection');
@@ -22,188 +29,273 @@ const restPlayersSpan = document.getElementById('restPlayers');
 const roundCounter = document.getElementById('roundCounter');
 const logoutBtn = document.getElementById('logoutBtn');
 
-const pointsSelect = document.getElementById('pointsSelect');
-const courtsSelect = document.getElementById('courtsSelect');
+// ====== STATE ======
+let state = {
+  players: [],
+  pointsToWin: 3,
+  courts: 1,
+  currentRound: 0,
+  totalRounds: 0,
+  lastRested: [],
+  matches: [], // partidos de la ronda actual (array de [a,b,c,d])
+  results: {}, // { indexDeCancha: {a:pts,b:pts} } (registrado)
+  finished: false
+};
 
-// ===== ESTADO LOCAL =====
-let players = [];
-let currentRound = 0;
-let totalRounds = 0;
-let lastRested = []; // quién descansó en la ronda previa
 let firebaseReady = false;
+let db = null;
 
-// ===== EVENTOS DE UI (siempre se registran) =====
-enterBtn.addEventListener("click", () => {
-  loginScreen.classList.add("hidden");
-  passwordScreen.classList.remove("hidden");
+// ====== NAV ======
+enterBtn.addEventListener('click', () => {
+  loginScreen.classList.add('hidden');
+  passwordScreen.classList.remove('hidden');
 });
 
-loginBtn.addEventListener("click", () => {
-  if ((passwordInput.value || "") === PASSWORD) {
-    passwordScreen.classList.add("hidden");
-    mainScreen.classList.remove("hidden");
+loginBtn.addEventListener('click', () => {
+  if (passwordInput.value === PASSWORD) {
+    passwordScreen.classList.add('hidden');
+    mainScreen.classList.remove('hidden');
+    tryResume();
   } else {
-    errorMsg.classList.remove("hidden");
+    errorMsg.classList.remove('hidden');
   }
 });
 
-logoutBtn.addEventListener("click", () => {
-  mainScreen.classList.add("hidden");
-  loginScreen.classList.remove("hidden");
+logoutBtn.addEventListener('click', () => {
+  mainScreen.classList.add('hidden');
+  loginScreen.classList.remove('hidden');
 });
 
-// Agregar jugador
-addPlayerBtn.addEventListener("click", () => {
-  const max = parseInt(courtsSelect.value, 10) * 8;  // máx. 8 por cancha
-  if (players.length >= max) return alert(`Máximo ${max} jugadores para ${courtsSelect.value} cancha(s).`);
-  const name = prompt("Nombre del jugador:");
-  if (name) {
-    if (players.includes(name)) return alert("Ese nombre ya está registrado.");
-    players.push(name);
-    renderPlayers();
-  }
+// ====== PLAYERS ======
+addPlayerBtn.addEventListener('click', () => {
+  const name = (playerNameInput.value || '').trim();
+  if (!name) return playerNameInput.focus();
+  const max = parseInt(courtsSelect.value,10) * 8;
+  if (state.players.length >= max) return alert(`Máximo ${max} jugadores para ${state.courts} cancha(s).`);
+  if (state.players.includes(name)) return alert('Ese nombre ya está registrado.');
+  state.players.push(name);
+  playerNameInput.value = '';
+  renderPlayers();
+  persist();
 });
 
 function renderPlayers() {
-  playersList.innerHTML = "";
-  players.forEach((p, i) => {
-    const div = document.createElement("div");
-    div.className = "border p-2 rounded flex items-center justify-between";
-    div.innerHTML = `<span>${i + 1}. ${p}</span>
+  playersList.innerHTML = '';
+  state.players.forEach((p,i) => {
+    const row = document.createElement('div');
+    row.className = 'border p-2 rounded flex items-center justify-between';
+    row.innerHTML = `<span>${i+1}. ${p}</span>
       <button class="text-xs text-red-600 underline" data-i="${i}">quitar</button>`;
-    playersList.appendChild(div);
+    playersList.appendChild(row);
   });
-  playersList.querySelectorAll("button[data-i]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const idx = parseInt(btn.getAttribute("data-i"), 10);
-      players.splice(idx, 1);
+  playersList.querySelectorAll('button[data-i]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const i = +btn.dataset.i;
+      state.players.splice(i,1);
       renderPlayers();
+      persist();
     });
   });
 }
 
-// Borrar jornada
-resetBtn.addEventListener("click", () => {
-  if (!confirm("¿Deseas borrar la jornada anterior y comenzar un nuevo Americano Zacatecas?")) return;
-  players = [];
-  currentRound = 0;
-  totalRounds = 0;
-  lastRested = [];
-  matchesList.innerHTML = "";
-  matchesSection.classList.add("hidden");
-  restSection.classList.add("hidden");
-  roundCounter.textContent = "Ronda 0 de 0";
-  renderPlayers();
-
-  // Limpieza online (si Firebase está listo)
-  if (firebaseReady) wipeOnline();
+// ====== CONFIG SELECTS ======
+pointsSelect.addEventListener('change', ()=>{
+  state.pointsToWin = parseInt(pointsSelect.value,10);
+  persist();
+});
+courtsSelect.addEventListener('change', ()=>{
+  state.courts = parseInt(courtsSelect.value,10);
+  persist();
 });
 
-// ===== EMPAREJAMIENTOS =====
-function shuffle(arr) {
-  return arr
-    .map(v => [Math.random(), v])
-    .sort((a, b) => a[0] - b[0])
-    .map(x => x[1]);
+// ====== RESET / BORRAR JORNADA ======
+resetBtn.addEventListener('click', async ()=>{
+  if (!confirm('¿Deseas borrar la jornada anterior y comenzar un nuevo Americano Zacatecas?')) return;
+  state = {
+    players: [],
+    pointsToWin: parseInt(pointsSelect.value,10) || 3,
+    courts: parseInt(courtsSelect.value,10) || 1,
+    currentRound: 0,
+    totalRounds: 0,
+    lastRested: [],
+    matches: [],
+    results: {},
+    finished: false
+  };
+  playersList.innerHTML = '';
+  matchesList.innerHTML = '';
+  matchesSection.classList.add('hidden');
+  restSection.classList.add('hidden');
+  roundCounter.textContent = 'Ronda 0 de 0';
+  startBtn.classList.remove('hidden');
+  nextRoundBtn.classList.add('hidden');
+  localStorage.removeItem(SESSION_KEY());
+  if (firebaseReady) await wipeOnline();
+});
+
+// ====== EMPAREJAMIENTO ======
+function shuffle(arr){
+  return arr.map(v=>[Math.random(),v]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
 }
 
-/**
- * Genera partidos para la ronda con N canchas.
- * - No deja que quien descansó vuelva a descansar.
- * - Intenta evitar descansos consecutivos.
- */
-function generateRound(playersArr, numCourts) {
-  const actives = [...playersArr];
+function generateRound(players, numCourts, lastRested){
+  const actives = [...players];
   const matches = [];
   const rest = [];
-
-  // Cantidad ideal por ronda (4 por cancha)
   const needed = numCourts * 4;
-  // Si sobran, descansan, pero evitando repetir los de la ronda anterior
+
+  // asignar descansos evitando consecutivos
   while (actives.length > needed) {
-    // candidato a descanso = alguien que NO descansó en la ronda pasada
-    let idx = actives.findIndex(p => !lastRested.includes(p));
-    if (idx === -1) idx = actives.length - 1; // si no hay alternativa
-    rest.push(actives.splice(idx, 1)[0]);
+    let i = actives.findIndex(p => !lastRested.includes(p));
+    if (i === -1) i = actives.length - 1;
+    rest.push(actives.splice(i,1)[0]);
   }
 
-  // mezclar y armar parejas por cancha
   const mixed = shuffle(actives);
-  for (let c = 0; c < numCourts; c++) {
-    const base = c * 4;
-    if (mixed[base + 3] === undefined) break;
-    matches.push([mixed[base], mixed[base + 1], mixed[base + 2], mixed[base + 3]]);
+  for (let c=0;c<numCourts;c++){
+    const b = c*4;
+    if (mixed[b+3] == null) break;
+    matches.push([mixed[b], mixed[b+1], mixed[b+2], mixed[b+3]]);
   }
 
-  lastRested = rest;
   return { matches, rest };
 }
 
-// ===== CONTROL DE RONDAS =====
-startBtn.addEventListener("click", () => {
-  const numCourts = parseInt(courtsSelect.value, 10);
-  if (players.length < 4) return alert("Se requieren al menos 4 jugadores.");
-  if (players.length < numCourts * 4) return alert(`Con ${numCourts} cancha(s) necesitas mínimo ${numCourts * 4} jugadores.`);
+// ====== INICIO & RONDAS ======
+startBtn.addEventListener('click', async ()=>{
+  if (state.players.length < 4) return alert('Se requieren al menos 4 jugadores.');
+  const need = state.courts * 4;
+  if (state.players.length < need) return alert(`Con ${state.courts} cancha(s) necesitas mínimo ${need} jugadores.`);
 
-  matchesSection.classList.remove("hidden");
-  restSection.classList.remove("hidden");
+  state.currentRound = 0;
+  state.totalRounds = Math.max(1, state.players.length - 1);
+  state.finished = false;
 
-  // número de rondas estimado (cada jugador debería jugar con rotaciones);
-  // simple heurística: todos juegan ~ (jugadores - 1) en 1 cancha; con más canchas reducimos
-  const factor = Math.max(1, Math.ceil(players.length / (numCourts * 4)));
-  totalRounds = Math.max(1, players.length - 1) * factor;
+  matchesSection.classList.remove('hidden');
+  restSection.classList.remove('hidden');
+  startBtn.classList.add('hidden');
+  nextRoundBtn.classList.add('hidden'); // se habilita cuando registren todos
 
-  currentRound = 0;
-  nextRoundBtn.classList.remove("hidden");
-  startBtn.classList.add("hidden");
-
-  // si hay Firebase, limpia y sube estado inicial
-  if (firebaseReady) initOnlineState();
-
+  await initOnlineState();
   nextRound();
 });
 
-nextRoundBtn.addEventListener("click", nextRound);
+nextRoundBtn.addEventListener('click', ()=>{
+  if (Object.keys(state.results).length < state.matches.length){
+    return alert('Registra todos los resultados antes de pasar de ronda.');
+  }
+  nextRound();
+});
 
-function nextRound() {
-  if (currentRound >= totalRounds) {
-    alert("¡Fin del Americano!");
+function nextRound(){
+  if (state.currentRound >= state.totalRounds){
+    alert('¡Fin del Americano!');
+    state.finished = true;
+    persist(); saveRoundOnline(); // última persistencia
     return;
   }
-  currentRound++;
-  const numCourts = parseInt(courtsSelect.value, 10);
-  const { matches, rest } = generateRound(players, numCourts);
-  renderRound(matches, rest);
-  roundCounter.textContent = `Ronda ${currentRound} de ${totalRounds}`;
 
-  if (firebaseReady) saveRoundOnline(currentRound, matches, rest);
+  state.currentRound++;
+  state.results = {};
+
+  const { matches, rest } = generateRound(state.players, state.courts, state.lastRested);
+  state.matches = matches;
+  state.lastRested = rest;
+
+  renderRound();
+  roundCounter.textContent = `Ronda ${state.currentRound} de ${state.totalRounds}`;
+  persist(); saveRoundOnline();
 }
 
-function renderRound(matches, rest) {
-  matchesList.innerHTML = "";
-  matches.forEach((m, i) => {
-    const div = document.createElement("div");
-    div.className = "border p-3 rounded text-center bg-gray-50";
-    div.textContent = `Cancha ${i + 1}: ${m[0]} & ${m[1]} 🆚 ${m[2]} & ${m[3]}`;
-    matchesList.appendChild(div);
+function renderRound(){
+  matchesList.innerHTML = '';
+  const maxPts = state.pointsToWin;
+
+  state.matches.forEach((m,i)=>{
+    const card = document.createElement('div');
+    card.className = 'border p-3 rounded bg-gray-50';
+    card.innerHTML = `
+      <div class="font-semibold mb-2">Cancha ${i+1}:</div>
+      <div class="mb-2">${m[0]} &amp; ${m[1]} <span class="mx-2">🆚</span> ${m[2]} &amp; ${m[3]}</div>
+
+      <div class="flex items-center gap-2 mb-2">
+        <label class="text-sm">Juegos pareja 1:</label>
+        <input type="number" min="0" max="${maxPts}" class="border rounded px-2 py-1 w-20" id="sA-${i}">
+        <label class="text-sm ml-4">Juegos pareja 2:</label>
+        <input type="number" min="0" max="${maxPts}" class="border rounded px-2 py-1 w-20" id="sB-${i}">
+        <button class="ml-4 bg-green-600 hover:bg-green-700 text-white text-sm py-1 px-3 rounded" id="reg-${i}">
+          Registrar
+        </button>
+        <span class="text-sm text-gray-600 ml-2" id="ok-${i}"></span>
+      </div>
+    `;
+    matchesList.appendChild(card);
+
+    document.getElementById(`reg-${i}`).addEventListener('click', ()=>{
+      const a = parseInt(document.getElementById(`sA-${i}`).value,10);
+      const b = parseInt(document.getElementById(`sB-${i}`).value,10);
+      if (Number.isNaN(a) || Number.isNaN(b)) return alert('Completa ambos marcadores.');
+      if (a<0 || b<0 || a>maxPts || b>maxPts) return alert(`Marcadores 0..${maxPts}.`);
+      if (a===b) return alert('Debe haber un ganador (no empates).');
+
+      state.results[i] = { a, b }; // registramos
+      document.getElementById(`ok-${i}`).textContent = '✔ Registrado';
+      // si se registraron todos, habilita siguiente
+      if (Object.keys(state.results).length === state.matches.length) {
+        nextRoundBtn.classList.remove('hidden');
+      }
+      persist(); saveRoundOnline();
+    });
   });
-  restPlayersSpan.textContent = rest.length ? rest.join(", ") : "—";
+
+  restPlayersSpan.textContent = state.lastRested.length ? state.lastRested.join(', ') : '—';
+  nextRoundBtn.classList.add('hidden'); // se mostrará cuando registren todos
 }
 
-// ===== FIREBASE (dinámico, no bloquea la UI) =====
-let db = null;
-function todayKey() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+// ====== PERSISTENCIA LOCAL ======
+function persist(){
+  const toSave = { ...state };
+  localStorage.setItem(SESSION_KEY(), JSON.stringify(toSave));
 }
 
-async function initFirebase() {
-  try {
-    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js");
-    const { getDatabase, ref, set, onValue, remove } = await import("https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js");
+function tryResume(){
+  const raw = localStorage.getItem(SESSION_KEY());
+  if (!raw) return;
+  const s = JSON.parse(raw);
+  if (s && !s.finished && (s.currentRound>0 || s.players.length>=4)) {
+    const ok = confirm('Hay una jornada activa de hoy. ¿Deseas reanudarla?');
+    if (ok){
+      state = s;
+      // reflejar selects y UI
+      pointsSelect.value = String(state.pointsToWin);
+      courtsSelect.value = String(state.courts);
+      renderPlayers();
+      matchesSection.classList.remove('hidden');
+      restSection.classList.remove('hidden');
+      roundCounter.textContent = `Ronda ${state.currentRound} de ${state.totalRounds}`;
+      renderRound();
+      startBtn.classList.add('hidden');
+      // si ya estaban todos registrados, muestra siguiente
+      if (Object.keys(state.results).length === state.matches.length && !state.finished) {
+        nextRoundBtn.classList.remove('hidden');
+      }
+    } else {
+      localStorage.removeItem(SESSION_KEY());
+    }
+  } else {
+    // no hay ronda activa; solo restauramos lista de jugadores si existiera
+    if (s?.players?.length) {
+      state.players = s.players;
+      renderPlayers();
+    }
+  }
+}
+
+// ====== FIREBASE (dinámico, no bloquea UI) ======
+async function initFirebase(){
+  try{
+    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js');
+    const { getDatabase, ref, set, onValue, remove } = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js');
 
     const firebaseConfig = {
       apiKey: "AIzaSyDm0J5dnEavIi0ow8o9q86Zl515E1zqIY0",
@@ -217,64 +309,43 @@ async function initFirebase() {
 
     const app = initializeApp(firebaseConfig);
     db = getDatabase(app);
-
-    // Escucha opcional: podrías sincronizar jugadores, rondas, etc. Aquí dejo hooks mínimos:
     firebaseReady = true;
-    console.log("Firebase OK →", { ok: true, at: new Date().toISOString() });
 
-    // listeners para traer estado (si alguien más ya inició)
-    const baseRef = ref(db, `sesiones/${todayKey()}`);
-    onValue(baseRef, (snap) => {
-      // Puedes extender este bloque si quieres sincronización total en vivo
-      // (p.ej. players, currentRound, etc.). Por ahora lo dejamos light.
-      // console.log("Estado remoto:", snap.val());
+    // Suscripción opcional (si quieres mostrar cambios de otros usuarios)
+    const baseRef = ref(db, `sesiones/${SESSION_KEY()}`);
+    onValue(baseRef, (snap)=> {
+      // aquí podrías sincronizar en vivo; por ahora persistimos local solo si hace sentido
+      // console.log('Remoto:', snap.val());
     });
 
-    // helpers online
-    window._fb = { ref, set, onValue, remove }; // por si quieres inspeccionar en consola
-  } catch (err) {
-    console.warn("Firebase no disponible (pero la app funciona en local):", err);
-    firebaseReady = false;
+    // Helpers globales
+    window._fb = { ref, set, onValue, remove };
+    console.log('Firebase OK', new Date().toISOString());
+  }catch(err){
+    console.warn('Firebase no disponible. Modo local activo.', err);
   }
 }
 
-async function initOnlineState() {
+async function initOnlineState(){
+  persist();
   if (!firebaseReady) return;
   const { ref, set } = window._fb;
-  const base = ref(db, `sesiones/${todayKey()}`);
-  await set(base, {
-    config: {
-      puntos: parseInt(pointsSelect.value, 10),
-      canchas: parseInt(courtsSelect.value, 10)
-    },
-    jugadores: players,
-    rondaActual: currentRound,
-    totalRondas: totalRounds
-  });
+  await set(ref(db, `sesiones/${SESSION_KEY()}`), { state, at: new Date().toISOString() });
 }
 
-async function saveRoundOnline(ronda, matches, rest) {
+async function saveRoundOnline(){
   if (!firebaseReady) return;
   const { ref, set } = window._fb;
-  const rRef = ref(db, `sesiones/${todayKey()}/rondas/${ronda}`);
-  await set(rRef, { matches, rest, at: new Date().toISOString() });
-  const metaRef = ref(db, `sesiones/${todayKey()}`);
-  await set(metaRef, {
-    config: {
-      puntos: parseInt(pointsSelect.value, 10),
-      canchas: parseInt(courtsSelect.value, 10)
-    },
-    jugadores: players,
-    rondaActual: currentRound,
-    totalRondas: totalRounds
-  });
+  await set(ref(db, `sesiones/${SESSION_KEY()}`), { state, at: new Date().toISOString() });
 }
 
-async function wipeOnline() {
+async function wipeOnline(){
   if (!firebaseReady) return;
   const { ref, remove } = window._fb;
-  await remove(ref(db, `sesiones/${todayKey()}`));
+  await remove(ref(db, `sesiones/${SESSION_KEY()}`));
 }
 
-// Inicia Firebase sin bloquear la UI
+// ====== ARRANQUE ======
+state.pointsToWin = parseInt(pointsSelect.value,10);
+state.courts = parseInt(courtsSelect.value,10);
 initFirebase();
