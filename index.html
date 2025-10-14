@@ -29,8 +29,7 @@
       </h2>
       <p class="text-gray-500 mb-6">Sistema de emparejamientos automáticos</p>
 
-      <!-- Fallback inline: si por cualquier motivo no se montó el listener,
-           esto llama a window.PAZ.enter() directamente -->
+      <!-- Fallback inline a window.PAZ.enter() -->
       <button id="enterBtn"
         onclick="window.PAZ && window.PAZ.enter && window.PAZ.enter()"
         class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded">
@@ -115,7 +114,6 @@
     </div>
   </footer>
 
-  <!-- Muevo el script al final y SIN defer para garantizar el DOM -->
   <script src="./script.js"></script>
 </body>
 </html>
