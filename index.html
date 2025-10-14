@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Padel-Americano Zacatecas</title>
   <link rel="stylesheet" href="./style.css" />
-  <!-- Tailwind CDN para estilos rápidos -->
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
@@ -22,34 +21,34 @@
     </div>
   </header>
 
-  <!-- Pantalla de portada -->
+  <!-- Portada -->
   <main id="cover" class="flex-1 flex items-center justify-center">
     <div class="text-center">
       <h2 class="text-2xl md:text-3xl font-bold text-green-700 mb-2">
         Padel-Americano Zacatecas
       </h2>
       <p class="text-gray-500 mb-6">Sistema de emparejamientos automáticos</p>
+
+      <!-- Fallback inline: si por cualquier motivo no se montó el listener,
+           esto llama a window.PAZ.enter() directamente -->
       <button id="enterBtn"
+        onclick="window.PAZ && window.PAZ.enter && window.PAZ.enter()"
         class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded">
         Entrar
       </button>
     </div>
   </main>
 
-  <!-- Pantalla principal -->
+  <!-- App -->
   <section id="app" class="hidden flex-1">
     <div class="max-w-5xl mx-auto px-4 pb-24">
-      <!-- Barra superior -->
       <div class="w-full mt-8">
         <div class="bg-white rounded-xl shadow p-5">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="text-lg font-semibold text-green-700">Americano Zacatecas</div>
-            <div class="text-sm text-gray-500">
-              Ronda <span id="roundLabel">0</span>
-            </div>
+            <div class="text-sm text-gray-500">Ronda <span id="roundLabel">0</span></div>
           </div>
 
-          <!-- Controles -->
           <div class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
             <div class="md:col-span-4">
               <label class="block text-sm text-gray-600 mb-1">Puntos por partido</label>
@@ -84,60 +83,39 @@
             </div>
           </div>
 
-          <!-- Botones principales -->
           <div class="mt-5 flex flex-wrap justify-center gap-3">
-            <button id="startBtn"
-              class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+            <button id="startBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
               Iniciar Americano
             </button>
-
-            <button id="nextAvailBtn"
-              class="hidden bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">
+            <button id="nextAvailBtn" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">
               Generar partidos (disponibles)
             </button>
-
-            <button id="nextRoundBtn"
-              class="hidden bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded">
+            <button id="nextRoundBtn" class="hidden bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded">
               Siguiente ronda (global)
             </button>
-
-            <button id="resetBtn"
-              class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+            <button id="resetBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
               Borrar jornada
             </button>
-
-            <button id="exitBtn"
-              class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">
+            <button id="exitBtn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">
               Salir
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Listado de jugadores -->
-      <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4" id="playersList">
-        <!-- se llena por JS -->
-      </div>
-
-      <!-- Partidos actuales -->
-      <div class="mt-8" id="matchesArea">
-        <!-- se llena por JS -->
-      </div>
-
-      <!-- Tabla de posiciones -->
-      <div class="mt-8" id="standingsArea">
-        <!-- se llena por JS -->
-      </div>
+      <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4" id="playersList"></div>
+      <div class="mt-8" id="matchesArea"></div>
+      <div class="mt-8" id="standingsArea"></div>
     </div>
   </section>
 
-  <!-- Footer -->
   <footer class="mt-auto py-6">
     <div class="max-w-5xl mx-auto px-4 text-center text-sm text-gray-500">
       Desarrollado por <span class="font-semibold">Roberto Cabral</span>
     </div>
   </footer>
 
-  <script src="./script.js" defer></script>
+  <!-- Muevo el script al final y SIN defer para garantizar el DOM -->
+  <script src="./script.js"></script>
 </body>
 </html>
