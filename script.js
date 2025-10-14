@@ -1,602 +1,558 @@
-// ====== CONFIG ======
-const PASSWORD = "Padel2025";
-const SESSION_KEY = () => `americano:${new Date().toISOString().slice(0,10)}`;
+/* =============================
+   Padel-Americano Zacatecas v1.6 (rolling)
+   ============================= */
 
-// ====== UI REFS ======
-const enterBtn = document.getElementById('enterBtn');
-const loginBtn = document.getElementById('loginBtn');
-const passwordInput = document.getElementById('passwordInput');
-const loginScreen = document.getElementById('login-screen');
-const passwordScreen = document.getElementById('password-screen');
-const mainScreen = document.getElementById('main-screen');
-const errorMsg = document.getElementById('errorMsg');
-
-const pointsSelect = document.getElementById('pointsSelect');
-const courtsSelect = document.getElementById('courtsSelect');
-const modeSelect = document.getElementById('modeSelect');
-
-const playerNameInput = document.getElementById('playerNameInput');
-const addPlayerBtn = document.getElementById('addPlayerBtn');
-const playersList = document.getElementById('playersList');
-
-const startBtn = document.getElementById('startBtn');
-const nextRoundBtn = document.getElementById('nextRoundBtn');
-const resetBtn = document.getElementById('resetBtn');
-const bracketBtn = document.getElementById('bracketBtn');
-
-const matchesSection = document.getElementById('matchesSection');
-const matchesList = document.getElementById('matchesList');
-const restSection = document.getElementById('restSection');
-const restPlayersSpan = document.getElementById('restPlayers');
-const roundCounter = document.getElementById('roundCounter');
-const logoutBtn = document.getElementById('logoutBtn');
-
-const standingsSection = document.getElementById('standingsSection');
-const standingsBody = document.getElementById('standingsBody');
-
-const bracketSection = document.getElementById('bracketSection');
-const bracketConfig = document.getElementById('bracketConfig');
-const bracketLabel = document.getElementById('bracketLabel');
-const bracketSelect = document.getElementById('bracketSelect');
-const createBracketBtn = document.getElementById('createBracketBtn');
-
-const qfCol = document.getElementById('qfCol');
-const sfCol = document.getElementById('sfCol');
-const fnCol = document.getElementById('fnCol');
-const qfList = document.getElementById('qfList');
-const sfList = document.getElementById('sfList');
-const fnList = document.getElementById('fnList');
-const championBox = document.getElementById('championBox');
-const championName = document.getElementById('championName');
-
-// ====== STATE ======
-let state = {
-  players: [],
-  pointsToWin: 3,
-  courts: 1,
-  mode: 'general', // 'general' | 'por_cancha'
-  currentRound: 0,
-  totalRounds: 0,
-  lastRested: [],
-  matches: [],   // array de partidos ronda actual: [p1,p2,p3,p4] por cancha
-  results: {},   // resultados ronda actual
-  finished: false,
-
-  standings: {},         // general: { jugador: stats }
-  standingsByCourt: {},  // por_cancha: { courtIndex: { jugador: stats } }
-
-  // Eliminatorias
-  bracket: {
-    stage: 'none', // none | qf | sf | fn | done
-    qf: [], // [{a:[p1,p2], b:[p3,p4], scoreA, scoreB, winnerPair }]
-    sf: [],
-    fn: []
-  }
-};
-
-let firebaseReady = false;
-let db = null;
-
-// ====== NAV ======
-enterBtn.addEventListener('click', () => {
-  loginScreen.classList.add('hidden');
-  passwordScreen.classList.remove('hidden');
-});
-
-loginBtn.addEventListener('click', () => {
-  if (passwordInput.value === PASSWORD) {
-    passwordScreen.classList.add('hidden');
-    mainScreen.classList.remove('hidden');
-    tryResume();
+(function () {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initUI);
   } else {
-    errorMsg.classList.remove('hidden');
+    initUI();
   }
-});
 
-logoutBtn.addEventListener('click', () => {
-  mainScreen.classList.add('hidden');
-  loginScreen.classList.remove('hidden');
-});
+  // ------- Estado -------
+  const state = {
+    players: [],           // array de nombres (únicos)
+    courts: 1,
+    pointsToWin: 3,
+    round: 0,              // 0 antes de iniciar
+    matches: [],           // [{court, pairs:[[a,b],[c,d]], status:'open'|'done', result:{a,b}|null}]
+    results: [],           // espejo simple por índice
+    standings: {},         // nombre -> stats
+    lastRested: [],        // descansaron la generación anterior
+  };
 
-// ====== PLAYERS ======
-addPlayerBtn.addEventListener('click', () => {
-  const name = (playerNameInput.value || '').trim();
-  if (!name) return playerNameInput.focus();
-  const max = parseInt(courtsSelect.value,10) * 8;
-  if (state.players.length >= max) return alert(`Máximo ${max} jugadores para ${state.courts} cancha(s).`);
-  if (state.players.includes(name)) return alert('Ese nombre ya está registrado.');
-  state.players.push(name);
-  playerNameInput.value = '';
-  renderPlayers();
-  ensureStandings();
-  persist();
-});
+  // ------- Elementos DOM -------
+  let cover, app;
+  let enterBtn, exitBtn;
 
-function renderPlayers() {
-  playersList.innerHTML = '';
-  state.players.forEach((p,i) => {
-    const row = document.createElement('div');
-    row.className = 'border p-2 rounded flex items-center justify-between';
-    row.innerHTML = `<span>${i+1}. ${p}</span>
-      <button class="text-xs text-red-600 underline" data-i="${i}">quitar</button>`;
-    playersList.appendChild(row);
-  });
-  playersList.querySelectorAll('button[data-i]').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      const i = +btn.dataset.i;
-      const name = state.players[i];
-      state.players.splice(i,1);
-      delete state.standings[name];
-      Object.values(state.standingsByCourt || {}).forEach(map => delete map[name]);
-      renderPlayers();
-      renderStandings();
+  let pointsSelect, courtsSelect;
+  let playerInput, addPlayerBtn;
+  let startBtn, nextRoundBtn, nextAvailBtn, resetBtn;
+
+  let playersList, matchesArea, standingsArea, roundLabel;
+
+  // ------- Inicialización UI -------
+  function initUI() {
+    cover = document.getElementById('cover');
+    app = document.getElementById('app');
+
+    enterBtn = document.getElementById('enterBtn');
+    exitBtn = document.getElementById('exitBtn');
+
+    pointsSelect = document.getElementById('pointsSelect');
+    courtsSelect = document.getElementById('courtsSelect');
+    playerInput = document.getElementById('playerInput');
+    addPlayerBtn = document.getElementById('addPlayerBtn');
+
+    startBtn = document.getElementById('startBtn');
+    nextRoundBtn = document.getElementById('nextRoundBtn');
+    nextAvailBtn = document.getElementById('nextAvailBtn');
+    resetBtn = document.getElementById('resetBtn');
+
+    playersList = document.getElementById('playersList');
+    matchesArea = document.getElementById('matchesArea');
+    standingsArea = document.getElementById('standingsArea');
+    roundLabel = document.getElementById('roundLabel');
+
+    // listeners
+    if (enterBtn) enterBtn.addEventListener('click', () => {
+      cover.classList.add('hidden');
+      app.classList.remove('hidden');
+      loadFromStorage();
+      renderAll();
+    });
+
+    if (exitBtn) exitBtn.addEventListener('click', () => {
+      app.classList.add('hidden');
+      cover.classList.remove('hidden');
+    });
+
+    pointsSelect.addEventListener('change', () => {
+      state.pointsToWin = parseInt(pointsSelect.value, 10);
       persist();
     });
-  });
-}
 
-// ====== CONFIG SELECTS ======
-pointsSelect.addEventListener('change', ()=>{
-  state.pointsToWin = parseInt(pointsSelect.value,10);
-  persist();
-});
-courtsSelect.addEventListener('change', ()=>{
-  state.courts = parseInt(courtsSelect.value,10);
-  persist();
-});
-modeSelect.addEventListener('change', ()=>{
-  state.mode = modeSelect.value;
-  persist();
-});
+    courtsSelect.addEventListener('change', () => {
+      state.courts = parseInt(courtsSelect.value, 10);
+      persist();
+    });
 
-// ====== RESET ======
-resetBtn.addEventListener('click', async ()=>{
-  if (!confirm('¿Deseas borrar la jornada anterior y comenzar un nuevo Americano Zacatecas?')) return;
-  state = {
-    players: [],
-    pointsToWin: parseInt(pointsSelect.value,10) || 3,
-    courts: parseInt(courtsSelect.value,10) || 1,
-    mode: modeSelect.value,
-    currentRound: 0,
-    totalRounds: 0,
-    lastRested: [],
-    matches: [],
-    results: {},
-    finished: false,
-    standings: {},
-    standingsByCourt: {},
-    bracket: { stage:'none', qf:[], sf:[], fn:[] }
-  };
-  playersList.innerHTML = '';
-  matchesList.innerHTML = '';
-  matchesSection.classList.add('hidden');
-  restSection.classList.add('hidden');
-  roundCounter.textContent = 'Ronda 0 de 0';
-  startBtn.classList.remove('hidden');
-  nextRoundBtn.classList.add('hidden');
-  bracketBtn.classList.add('hidden');
-  standingsBody.innerHTML = '';
-  standingsSection.classList.add('hidden');
-  bracketSection.classList.add('hidden');
-  qfCol.classList.add('hidden'); sfCol.classList.add('hidden'); fnCol.classList.add('hidden');
-  championBox.classList.add('hidden'); championName.textContent='';
-  localStorage.removeItem(SESSION_KEY());
-  if (firebaseReady) await wipeOnline();
-});
+    addPlayerBtn.addEventListener('click', addPlayer);
+    playerInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') addPlayer();
+    });
 
-// ====== EMPAREJAMIENTO ======
-function shuffle(arr){
-  return arr.map(v=>[Math.random(),v]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
-}
+    startBtn.addEventListener('click', startTournament);
+    nextRoundBtn.addEventListener('click', nextRoundGlobal);
+    nextAvailBtn.addEventListener('click', generateFromAvailable);
+    resetBtn.addEventListener('click', confirmReset);
 
-function splitByCourts(players, nCourts){
-  // devuelve array de arrays lo más equilibrados posible
-  const mix = shuffle(players);
-  const groups = Array.from({length:nCourts}, ()=>[]);
-  mix.forEach((p,i)=>{ groups[i % nCourts].push(p); });
-  return groups;
-}
+    // Defaults
+    state.pointsToWin = parseInt(pointsSelect.value, 10);
+    state.courts = parseInt(courtsSelect.value, 10);
 
-function generateRound(players, numCourts, lastRested){
-  // modo general: todos en una lista
-  const actives = [...players];
-  const matches = [];
-  const rest = [];
-  const needed = numCourts * 4;
-
-  while (actives.length > needed) {
-    let i = actives.findIndex(p => !lastRested.includes(p));
-    if (i === -1) i = actives.length - 1;
-    rest.push(actives.splice(i,1)[0]);
+    // Si entras directo a / (sin pulsar entrar), intenta cargar
+    loadFromStorage();
+    renderAll();
   }
 
-  const mixed = shuffle(actives);
-  for (let c=0;c<numCourts;c++){
-    const b = c*4;
-    if (mixed[b+3] == null) break;
-    matches.push([mixed[b], mixed[b+1], mixed[b+2], mixed[b+3]]);
+  // ------- Helpers -------
+  function persist() {
+    localStorage.setItem('pa_state_v16', JSON.stringify(state));
   }
 
-  return { matches, rest };
-}
+  function loadFromStorage() {
+    const raw = localStorage.getItem('pa_state_v16');
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw);
+      // merge básico
+      Object.assign(state, saved);
+      if (!Array.isArray(state.players)) state.players = [];
+      if (!Array.isArray(state.matches)) state.matches = [];
+      if (!Array.isArray(state.lastRested)) state.lastRested = [];
+      if (typeof state.standings !== 'object' || !state.standings) state.standings = {};
+      // Sincroniza selects y ronda
+      pointsSelect.value = String(state.pointsToWin || 3);
+      courtsSelect.value = String(state.courts || 1);
+    } catch {}
+  }
 
-function generateRoundByCourt(players, numCourts, lastRested){
-  // cada cancha empareja con su propio grupo
-  const groups = splitByCourts(players, numCourts);
-  const matches = [];
-  const rest = [];
-
-  groups.forEach((g, idx) => {
-    const local = [...g];
-    while (local.length > 4) {
-      // descansos locales evitando consecutivos globales
-      const i = local.findIndex(p=>!lastRested.includes(p));
-      rest.push(local.splice(i===-1?local.length-1:i,1)[0]);
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
     }
-    const m = shuffle(local);
-    if (m.length === 4) matches.push([m[0],m[1],m[2],m[3]]);
-  });
-
-  return { matches, rest };
-}
-
-// ====== INICIO & RONDAS ======
-startBtn.addEventListener('click', async ()=>{
-  if (state.players.length < 4) return alert('Se requieren al menos 4 jugadores.');
-  const need = state.courts * 4;
-  if (state.players.length < need) return alert(`Con ${state.courts} cancha(s) necesitas mínimo ${need} jugadores.`);
-
-  state.currentRound = 0;
-  state.totalRounds = Math.max(1, state.players.length - 1);
-  state.finished = false;
-
-  ensureStandings();
-  renderStandings();
-
-  matchesSection.classList.remove('hidden');
-  restSection.classList.remove('hidden');
-  startBtn.classList.add('hidden');
-  nextRoundBtn.classList.add('hidden');
-  bracketBtn.classList.add('hidden');
-
-  await initOnlineState();
-  nextRound();
-});
-
-nextRoundBtn.addEventListener('click', ()=>{
-  if (Object.keys(state.results).length < state.matches.length){
-    return alert('Registra todos los resultados antes de pasar de ronda.');
+    return a;
   }
-  nextRound();
-});
 
-function nextRound(){
-  if (state.currentRound >= state.totalRounds){
-    alert('¡Fin del Americano!');
-    state.finished = true;
+  function ensureStatsFor(name) {
+    if (!state.standings[name]) {
+      state.standings[name] = { PJ:0, PG:0, PP:0, JF:0, JC:0, Dif:0, Pts:0 };
+    }
+  }
+
+  function addPlayer() {
+    const name = (playerInput.value || '').trim();
+    if (!name) return;
+    if (state.players.includes(name)) {
+      alert('Ese nombre ya está en la lista.');
+      return;
+    }
+    state.players.push(name);
+    ensureStatsFor(name);
+    playerInput.value = '';
+    persist();
+    renderPlayers();
+  }
+
+  function removePlayer(name) {
+    // si ya hay ronda, no permitas borrar (para evitar inconsistencias)
+    if (state.round > 0) {
+      alert('No puedes eliminar jugadores con el Americano en curso.');
+      return;
+    }
+    state.players = state.players.filter(p => p !== name);
+    persist();
+    renderPlayers();
+  }
+
+  // ------- Emparejamientos -------
+  // genera hasta maxMatches con players[] (múltiplos de 4), devuelve {matches:[[a,b,c,d]...], rest:[...]}
+  function generateRound(poolPlayers, maxMatches, lastRested = []) {
+    const shuffled = shuffle(poolPlayers);
+    // empuja al final a quienes descansaron antes (para darles prioridad a jugar ahora)
+    const prio = shuffled.filter(p => !lastRested.includes(p))
+      .concat(shuffled.filter(p => lastRested.includes(p)));
+
+    const matches = [];
+    const used = new Set();
+
+    for (let i = 0; i < prio.length; ) {
+      if (matches.length >= maxMatches) break;
+      const block = [];
+      while (i < prio.length && block.length < 4) {
+        const cand = prio[i++];
+        if (!used.has(cand)) {
+          used.add(cand);
+          block.push(cand);
+        }
+      }
+      if (block.length === 4) {
+        matches.push(block); // [p0,p1,p2,p3] -> (p0,p1) vs (p2,p3)
+      }
+    }
+
+    // resto = los no usados
+    const rest = prio.filter(p => !used.has(p));
+    return { matches, rest };
+  }
+
+  function currentBusyPlayers() {
+    const busy = new Set();
+    state.matches.forEach(m => {
+      if (m.status === 'open') {
+        m.pairs.flat().forEach(p => busy.add(p));
+      }
+    });
+    return busy;
+  }
+
+  // ------- Lógica principal -------
+  function startTournament() {
+    if (state.players.length < 4) {
+      alert('Necesitas al menos 4 jugadores.');
+      return;
+    }
+    if (state.round > 0 && state.matches.some(m => m.status === 'open')) {
+      alert('Hay partidos abiertos. Termina o regístralos antes.');
+      return;
+    }
+    state.round = 1;
+    roundLabel.textContent = `${state.round}`;
+    // reset de matches/resultados de la ronda
+    state.matches = [];
+    state.results = [];
+    // generar primera tanda
+    const { matches, rest } = generateRound(state.players, state.courts, state.lastRested);
+    state.matches = matches.map((block, idx) => ({
+      court: idx + 1,
+      pairs: [[block[0], block[1]], [block[2], block[3]]],
+      status: 'open',
+      result: null
+    }));
+    state.lastRested = rest;
+    nextAvailBtn.classList.remove('hidden'); // rolling disponible
     nextRoundBtn.classList.add('hidden');
-    bracketBtn.classList.remove('hidden');  // permitir generar eliminatorias
-    persist(); saveRoundOnline();
-    return;
+    persist();
+    renderAll();
   }
 
-  state.currentRound++;
-  state.results = {};
+  // Generar más partidos usando jugadores disponibles (rolling)
+  function generateFromAvailable() {
+    const busy = currentBusyPlayers();
+    const available = state.players.filter(p => !busy.has(p));
+    const remain = available.filter(p => !state.lastRested.includes(p));
 
-  const generator = (state.mode==='por_cancha') ? generateRoundByCourt : generateRound;
-  const { matches, rest } = generator(state.players, state.courts, state.lastRested);
-  state.matches = matches;
-  state.lastRested = rest;
+    const openCourts = state.courts - state.matches.filter(m => m.status === 'open').length;
+    if (openCourts <= 0) return alert('No hay canchas libres por ahora.');
+    const maxNew = Math.min(openCourts, Math.floor(remain.length / 4));
+    if (maxNew <= 0) return alert('No hay suficientes jugadores disponibles.');
 
-  renderRound();
-  roundCounter.textContent = `Ronda ${state.currentRound} de ${state.totalRounds}`;
-  persist(); saveRoundOnline();
-}
+    const { matches, rest } = generateRound(remain, maxNew, state.lastRested);
 
-function renderRound(){
-  matchesList.innerHTML = '';
-  const maxPts = state.pointsToWin;
+    let nextCourt = state.matches.length + 1;
+    matches.forEach(block => {
+      state.matches.push({
+        court: nextCourt++,
+        pairs: [[block[0], block[1]], [block[2], block[3]]],
+        status: 'open',
+        result: null
+      });
+    });
+    // descansan los que no entraron en este batch
+    state.lastRested = rest;
+    persist();
+    renderMatches();
+  }
 
-  state.matches.forEach((m,i)=>{
-    const card = document.createElement('div');
-    card.className = 'border p-3 rounded bg-gray-50';
-    card.innerHTML = `
-      <div class="font-semibold mb-2">Cancha ${i+1}:</div>
-      <div class="mb-2">${m[0]} &amp; ${m[1]} <span class="mx-2">🆚</span> ${m[2]} &amp; ${m[3]}</div>
+  function nextRoundGlobal() {
+    // Solo si todos cerrados
+    if (!state.matches.every(m => m.status === 'done')) {
+      alert('Aún hay partidos abiertos.');
+      return;
+    }
+    state.round += 1;
+    roundLabel.textContent = `${state.round}`;
 
-      <div class="flex items-center gap-2 mb-2">
-        <label class="text-sm">Juegos pareja 1:</label>
-        <input type="number" min="0" max="${maxPts}" class="border rounded px-2 py-1 w-20" id="sA-${i}">
-        <label class="text-sm ml-4">Juegos pareja 2:</label>
-        <input type="number" min="0" max="${maxPts}" class="border rounded px-2 py-1 w-20" id="sB-${i}">
-        <button class="ml-4 bg-green-600 hover:bg-green-700 text-white text-sm py-1 px-3 rounded" id="reg-${i}">
-          Registrar
-        </button>
-        <span class="text-sm text-gray-600 ml-2" id="ok-${i}"></span>
-      </div>
+    // nueva ronda: vacía la lista de partidos y genera desde cero
+    state.matches = [];
+    state.results = [];
+
+    const { matches, rest } = generateRound(state.players, state.courts, state.lastRested);
+    state.matches = matches.map((block, idx) => ({
+      court: idx + 1,
+      pairs: [[block[0], block[1]], [block[2], block[3]]],
+      status: 'open',
+      result: null
+    }));
+    state.lastRested = rest;
+
+    nextRoundBtn.classList.add('hidden');
+    nextAvailBtn.classList.remove('hidden');
+    persist();
+    renderAll();
+  }
+
+  function confirmReset() {
+    if (!state.round && state.players.length === 0) return;
+    const ok = confirm('¿Deseas borrar la jornada y reiniciar todo?');
+    if (!ok) return;
+    Object.assign(state, {
+      players: [],
+      courts: parseInt(courtsSelect.value, 10) || 1,
+      pointsToWin: parseInt(pointsSelect.value, 10) || 3,
+      round: 0,
+      matches: [],
+      results: [],
+      standings: {},
+      lastRested: []
+    });
+    persist();
+    renderAll();
+  }
+
+  // ------- Standings -------
+  function applyMatchToStandings(pairA, pairB, a, b) {
+    const A = pairA, B = pairB;
+    const winA = a > b;
+
+    A.forEach(p => ensureStatsFor(p));
+    B.forEach(p => ensureStatsFor(p));
+
+    // por jugador
+    A.forEach(p => {
+      state.standings[p].PJ += 1;
+      state.standings[p].JF += a;
+      state.standings[p].JC += b;
+      state.standings[p].Dif += (a - b);
+      if (winA) {
+        state.standings[p].PG += 1;
+        state.standings[p].Pts += 2;
+      } else {
+        state.standings[p].PP += 1;
+      }
+    });
+
+    B.forEach(p => {
+      state.standings[p].PJ += 1;
+      state.standings[p].JF += b;
+      state.standings[p].JC += a;
+      state.standings[p].Dif += (b - a);
+      if (!winA) {
+        state.standings[p].PG += 1;
+        state.standings[p].Pts += 2;
+      } else {
+        state.standings[p].PP += 1;
+      }
+    });
+  }
+
+  // ------- Render -------
+  function renderAll() {
+    renderPlayers();
+    renderMatches();
+    renderStandings();
+    roundLabel.textContent = `${state.round || 0}`;
+  }
+
+  function renderPlayers() {
+    playersList.innerHTML = '';
+    const col = document.createElement('div');
+    col.className = 'bg-white rounded-xl shadow p-4 md:col-span-2';
+
+    const title = document.createElement('div');
+    title.className = 'text-gray-700 font-semibold mb-3';
+    title.textContent = `Jugadores (máx. 8 por cancha):`;
+    col.appendChild(title);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'grid grid-cols-1 md:grid-cols-2 gap-3';
+
+    state.players.forEach((p, idx) => {
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-2';
+      row.innerHTML = `
+        <span class="inline-block w-8 text-gray-500">${idx + 1}.</span>
+        <input type="text" value="${p}" class="flex-1 border rounded px-3 py-2" disabled />
+        <button class="text-red-500 text-sm underline">quitar</button>
+      `;
+      const btn = row.querySelector('button');
+      btn.addEventListener('click', () => removePlayer(p));
+      wrap.appendChild(row);
+    });
+
+    col.appendChild(wrap);
+    playersList.appendChild(col);
+  }
+
+  function renderMatches() {
+    matchesArea.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'bg-white rounded-xl shadow p-4';
+
+    const head = document.createElement('div');
+    head.className = 'text-gray-700 font-semibold mb-3';
+    head.textContent = 'Partidos actuales:';
+    box.appendChild(head);
+
+    // tarjetas por partido
+    state.matches.forEach((m, i) => {
+      const [a1, a2] = m.pairs[0];
+      const [b1, b2] = m.pairs[1];
+
+      const card = document.createElement('div');
+      card.className = 'border rounded p-3 mb-3';
+
+      const statusBadge =
+        m.status === 'done'
+          ? '<span class="ml-2 inline-block text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">Registrado</span>'
+          : '';
+
+      card.innerHTML = `
+        <div class="font-semibold mb-2">Cancha ${m.court}:${statusBadge}</div>
+        <div class="mb-2">${a1} &amp; ${a2} <span class="mx-2">🆚</span> ${b1} &amp; ${b2}</div>
+        <div class="flex items-center gap-3">
+          <div class="text-sm text-gray-600">Juegos pareja 1:</div>
+          <input id="sA-${i}" type="number" min="0" class="border rounded px-2 py-1 w-16" />
+          <div class="text-sm text-gray-600">Juegos pareja 2:</div>
+          <input id="sB-${i}" type="number" min="0" class="border rounded px-2 py-1 w-16" />
+          <button id="reg-${i}" class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-3 py-1 rounded">
+            Registrar
+          </button>
+          <span id="ok-${i}" class="text-sm text-green-600"></span>
+        </div>
+      `;
+
+      box.appendChild(card);
+
+      // preparar estado visual si ya estaba registrado
+      const inpA = card.querySelector(`#sA-${i}`);
+      const inpB = card.querySelector(`#sB-${i}`);
+      const btnR = card.querySelector(`#reg-${i}`);
+      const okSp = card.querySelector(`#ok-${i}`);
+
+      if (m.status === 'done') {
+        inpA.value = m.result.a;
+        inpB.value = m.result.b;
+        inpA.disabled = true;
+        inpB.disabled = true;
+        btnR.disabled = true;
+        okSp.textContent = '✔ Registrado';
+      }
+
+      btnR.addEventListener('click', () => {
+        const a = parseInt(inpA.value, 10);
+        const b = parseInt(inpB.value, 10);
+        const maxPts = state.pointsToWin;
+
+        if (state.matches[i].status === 'done') {
+          alert('Este partido ya fue registrado.');
+          return;
+        }
+        if (Number.isNaN(a) || Number.isNaN(b)) {
+          alert('Completa ambos marcadores.');
+          return;
+        }
+        if (a < 0 || b < 0) {
+          alert('Marcadores no pueden ser negativos.');
+          return;
+        }
+        if (a === b) {
+          alert('Debe haber ganador (no empates).');
+          return;
+        }
+        const winner = a > b ? a : b;
+        const loser = a > b ? b : a;
+        if (winner !== maxPts) {
+          alert(`El ganador debe llegar a ${maxPts}.`);
+          return;
+        }
+        if (loser > maxPts - 1) {
+          alert(`El perdedor debe estar entre 0 y ${maxPts - 1}.`);
+          return;
+        }
+
+        // aplica standings
+        applyMatchToStandings(m.pairs[0], m.pairs[1], a, b);
+        renderStandings();
+
+        // marca como done y bloquea
+        state.matches[i].status = 'done';
+        state.matches[i].result = { a, b };
+        okSp.textContent = '✔ Registrado';
+        inpA.disabled = true;
+        inpB.disabled = true;
+        btnR.disabled = true;
+
+        // si todos cerrados => permite "Siguiente ronda (global)"
+        const allDone = state.matches.every(mm => mm.status === 'done');
+        if (allDone) nextRoundBtn.classList.remove('hidden');
+
+        // rolling: mantener visible
+        nextAvailBtn.classList.remove('hidden');
+
+        persist();
+      });
+    });
+
+    // Descansan
+    const rest = document.createElement('div');
+    rest.className = 'text-sm text-gray-600 mt-2';
+    const busy = currentBusyPlayers();
+    const resting = state.players.filter(p => !busy.has(p));
+    rest.textContent = `Descansan: ${resting.join(', ') || '—'}`;
+    box.appendChild(rest);
+
+    matchesArea.appendChild(box);
+  }
+
+  function renderStandings() {
+    standingsArea.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'bg-white rounded-xl shadow p-4';
+
+    const head = document.createElement('div');
+    head.className = 'text-gray-700 font-semibold mb-3';
+    head.textContent = 'Tabla de posiciones';
+    box.appendChild(head);
+
+    // clona y ordena
+    const rows = Object.entries(state.standings).map(([name, s]) => ({ name, ...s }));
+    rows.sort((a, b) => {
+      if (b.Pts !== a.Pts) return b.Pts - a.Pts;
+      if (b.Dif !== a.Dif) return b.Dif - a.Dif;
+      if (b.JF !== a.JF) return b.JF - a.JF;
+      return a.JC - b.JC;
+    });
+
+    const table = document.createElement('div');
+    table.className = 'overflow-x-auto';
+    table.innerHTML = `
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-600">
+            <th class="py-2 px-2">#</th>
+            <th class="py-2 px-2">Jugador</th>
+            <th class="py-2 px-2">PJ</th>
+            <th class="py-2 px-2">PG</th>
+            <th class="py-2 px-2">PP</th>
+            <th class="py-2 px-2">JF</th>
+            <th class="py-2 px-2">JC</th>
+            <th class="py-2 px-2">Dif</th>
+            <th class="py-2 px-2">Pts</th>
+          </tr>
+        </thead>
+        <tbody id="standRows"></tbody>
+      </table>
     `;
-    matchesList.appendChild(card);
+    box.appendChild(table);
+    standingsArea.appendChild(box);
 
-    document.getElementById(`reg-${i}`).addEventListener('click', ()=>{
-      if (state.results[i]) return; // ya registrado (evita repetir)
-      const a = parseInt(document.getElementById(`sA-${i}`).value,10);
-      const b = parseInt(document.getElementById(`sB-${i}`).value,10);
-      if (![a,b].every(Number.isInteger)) return alert('Completa ambos marcadores (números enteros).');
-      if (a<0 || b<0 || a>maxPts || b>maxPts) return alert(`Marcadores válidos: 0..${maxPts}.`);
-      if (a===b) return alert('Debe haber un ganador (no empates).');
-      // uno debe llegar exactamente al máximo
-      if (a!==maxPts && b!==maxPts) return alert(`El ganador debe llegar exactamente a ${maxPts}.`);
-
-      // bloquear UI
-      document.getElementById(`sA-${i}`).disabled = true;
-      document.getElementById(`sB-${i}`).disabled = true;
-      document.getElementById(`reg-${i}`).disabled = true;
-
-      state.results[i] = { a, b };
-      document.getElementById(`ok-${i}`).textContent = '✔ Registrado';
-
-      const pairA = [ state.matches[i][0], state.matches[i][1] ];
-      const pairB = [ state.matches[i][2], state.matches[i][3] ];
-      applyMatchToStandings(pairA, pairB, a, b);
-      renderStandings();
-
-      if (Object.keys(state.results).length === state.matches.length) {
-        nextRoundBtn.classList.remove('hidden');
-      }
-
-      persist(); saveRoundOnline();
-    });
-  });
-
-  restPlayersSpan.textContent = state.lastRested.length ? state.lastRested.join(', ') : '—';
-  nextRoundBtn.classList.add('hidden');
-}
-
-// ====== STANDINGS (Puntos 2/0) ======
-function blankStats(){ return { PJ:0, PG:0, PP:0, JF:0, JC:0, Dif:0, Pts:0 }; }
-
-function ensureStandings() {
-  state.standings ||= {};
-  state.players.forEach(p => {
-    if (!state.standings[p]) state.standings[p] = blankStats();
-  });
-  if (state.mode==='por_cancha'){
-    state.standingsByCourt ||= {};
-    for (let i=0;i<state.courts;i++){
-      state.standingsByCourt[i] ||= {};
-      state.players.forEach(p=>{ if(!state.standingsByCourt[i][p]) state.standingsByCourt[i][p]=blankStats(); });
-    }
+    const tbody = table.querySelector('#standRows');
+    tbody.innerHTML = rows.map((r, idx) => `
+      <tr class="border-t">
+        <td class="py-1 px-2">${idx + 1}</td>
+        <td class="py-1 px-2">${r.name}</td>
+        <td class="py-1 px-2">${r.PJ}</td>
+        <td class="py-1 px-2">${r.PG}</td>
+        <td class="py-1 px-2">${r.PP}</td>
+        <td class="py-1 px-2">${r.JF}</td>
+        <td class="py-1 px-2">${r.JC}</td>
+        <td class="py-1 px-2">${r.Dif}</td>
+        <td class="py-1 px-2">${r.Pts}</td>
+      </tr>
+    `).join('');
   }
-}
-
-function addStats(targetMap, player, delta){
-  const s = (targetMap[player] ||= blankStats());
-  s.PJ += delta.PJ||0; s.PG += delta.PG||0; s.PP += delta.PP||0;
-  s.JF += delta.JF||0; s.JC += delta.JC||0; s.Pts += delta.Pts||0;
-  s.Dif = s.JF - s.JC;
-}
-
-function applyMatchToStandings(pairA, pairB, scoreA, scoreB) {
-  const winners = scoreA > scoreB ? pairA : pairB;
-  const losers  = scoreA > scoreB ? pairB : pairA;
-
-  winners.forEach(p=>{
-    addStats(state.standings, p, {
-      PJ:1, PG:1, JF: (pairA.includes(p) ? scoreA : scoreB), JC: (pairA.includes(p) ? scoreB : scoreA), Pts:2
-    });
-  });
-  losers.forEach(p=>{
-    addStats(state.standings, p, {
-      PJ:1, PP:1, JF: (pairA.includes(p) ? scoreA : scoreB), JC: (pairA.includes(p) ? scoreB : scoreA)
-    });
-  });
-
-  if (state.mode==='por_cancha') {
-    // asigna por índice de cancha: toma posición del match dentro de la ronda como "cancha"
-    const courtIndex = state.matches.findIndex(m => m===pairA.concat(pairB) || m===pairB.concat(pairA));
-    winners.forEach(p=>{
-      addStats(state.standingsByCourt[courtIndex], p, {
-        PJ:1, PG:1, JF: (pairA.includes(p) ? scoreA : scoreB), JC: (pairA.includes(p) ? scoreB : scoreA), Pts:2
-      });
-    });
-    losers.forEach(p=>{
-      addStats(state.standingsByCourt[courtIndex], p, {
-        PJ:1, PP:1, JF: (pairA.includes(p) ? scoreA : scoreB), JC: (pairA.includes(p) ? scoreB : scoreA)
-      });
-    });
-  }
-}
-
-function sortStandings(entries) {
-  return entries.sort((a,b)=>{
-    if (b[1].Pts !== a[1].Pts) return b[1].Pts - a[1].Pts;
-    if (b[1].Dif !== a[1].Dif) return b[1].Dif - a[1].Dif;
-    if (a[1].JC !== b[1].JC) return a[1].JC - b[1].JC;
-    return a[0].localeCompare(b[0]);
-  });
-}
-
-function renderStandings() {
-  if (!state.standings || Object.keys(state.standings).length === 0) {
-    standingsSection.classList.add('hidden');
-    return;
-  }
-  standingsSection.classList.remove('hidden');
-  const rows = sortStandings(Object.entries(state.standings));
-  standingsBody.innerHTML = rows.map(([name,s],idx)=>`
-    <tr class="border-t">
-      <td class="px-3 py-2">${idx+1}</td>
-      <td class="px-3 py-2">${name}</td>
-      <td class="px-3 py-2 text-center">${s.PJ}</td>
-      <td class="px-3 py-2 text-center">${s.PG}</td>
-      <td class="px-3 py-2 text-center">${s.PP}</td>
-      <td class="px-3 py-2 text-center">${s.JF}</td>
-      <td class="px-3 py-2 text-center">${s.JC}</td>
-      <td class="px-3 py-2 text-center">${s.Dif}</td>
-      <td class="px-3 py-2 text-center font-semibold">${s.Pts}</td>
-    </tr>
-  `).join('');
-}
-
-// ====== PERSISTENCIA LOCAL ======
-function persist(){
-  localStorage.setItem(SESSION_KEY(), JSON.stringify(state));
-}
-
-function tryResume(){
-  const raw = localStorage.getItem(SESSION_KEY());
-  if (!raw) return;
-
-  const s = JSON.parse(raw);
-  if (s) state = s;
-
-  pointsSelect.value = String(state.pointsToWin || 3);
-  courtsSelect.value = String(state.courts || 1);
-  modeSelect.value = String(state.mode || 'general');
-
-  if (state.players?.length) renderPlayers();
-  ensureStandings(); renderStandings();
-
-  if (!state.finished && (state.currentRound>0 || state.players.length>=4)) {
-    const ok = confirm('Hay una jornada activa de hoy. ¿Deseas reanudarla?');
-    if (ok){
-      matchesSection.classList.remove('hidden');
-      restSection.classList.remove('hidden');
-      roundCounter.textContent = `Ronda ${state.currentRound} de ${state.totalRounds}`;
-      renderRound();
-      startBtn.classList.add('hidden');
-      if (Object.keys(state.results).length === state.matches.length && !state.finished) {
-        nextRoundBtn.classList.remove('hidden');
-      }
-    } else {
-      localStorage.removeItem(SESSION_KEY());
-    }
-  }
-
-  if (state.finished && state.bracket?.stage && state.bracket.stage!=='none'){
-    showBracketSection(); renderBracket();
-  }
-}
-
-// ====== FIREBASE (igual que antes; opcional en vivo) ======
-async function initFirebase(){
-  try{
-    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js');
-    const { getDatabase, ref, set, onValue, remove } = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js');
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyDm0J5dnEavIi0ow8o9q86Zl515E1zqIY0",
-      authDomain: "padel-zac.firebaseapp.com",
-      databaseURL: "https://padel-zac-default-rtdb.firebaseio.com",
-      projectId: "padel-zac",
-      storageBucket: "padel-zac.firebasestorage.app",
-      messagingSenderId: "873811901531",
-      appId: "1:873811901531:web:3175ad146974213728d37e"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    db = getDatabase(app);
-    firebaseReady = true;
-
-    const baseRef = ref(db, `sesiones/${SESSION_KEY()}`);
-    onValue(baseRef, (snap)=> {
-      // podrías hacer live-sync si quieres
-    });
-
-    window._fb = { ref, set, onValue, remove };
-    console.log('Firebase OK', new Date().toISOString());
-  }catch(err){
-    console.warn('Firebase no disponible. Modo local activo.', err);
-  }
-}
-
-async function initOnlineState(){
-  persist();
-  if (!firebaseReady) return;
-  const { ref, set } = window._fb;
-  await set(ref(db, `sesiones/${SESSION_KEY()}`), { state, at: new Date().toISOString() });
-}
-
-async function saveRoundOnline(){
-  if (!firebaseReady) return;
-  const { ref, set } = window._fb;
-  await set(ref(db, `sesiones/${SESSION_KEY()}`), { state, at: new Date().toISOString() });
-}
-
-async function wipeOnline(){
-  if (!firebaseReady) return;
-  const { ref, remove } = window._fb;
-  await remove(ref(db, `sesiones/${SESSION_KEY()}`));
-}
-
-// ====== ELIMINATORIAS ======
-bracketBtn.addEventListener('click', ()=>{
-  showBracketSection();
-
-  // Config según modo
-  if (state.mode === 'general'){
-    bracketLabel.textContent = 'Top global:';
-  } else {
-    bracketLabel.textContent = 'Top por cancha:';
-  }
-  bracketConfig.classList.remove('hidden');
-});
-
-createBracketBtn.addEventListener('click', ()=>{
-  const topN = parseInt(bracketSelect.value,10);
-
-  let seeds = [];
-  if (state.mode === 'general') {
-    const rows = sortStandings(Object.entries(state.standings));
-    seeds = rows.slice(0, topN).map(([name])=>name);
-  } else {
-    // por cancha: topN repartido por cada cancha (si no alcanza, se completa con mejores globales)
-    const perCourt = Math.floor(topN / state.courts) || 1;
-    const selected = new Set();
-    for (let i=0;i<state.courts;i++){
-      const rows = sortStandings(Object.entries(state.standingsByCourt[i] || {}));
-      rows.slice(0, perCourt).forEach(([name])=>selected.add(name));
-    }
-    // si faltan, completar por ranking global
-    if (selected.size < topN){
-      const rowsG = sortStandings(Object.entries(state.standings));
-      for (const [name] of rowsG) {
-        if (selected.size>=topN) break;
-        if (!selected.has(name)) selected.add(name);
-      }
-    }
-    seeds = Array.from(selected);
-  }
-
-  // armar bracket simple: 1–N, 2–N-1, etc.
-  if (seeds.length < 2) return alert('No hay suficientes jugadores para eliminatorias.');
-  state.bracket = { stage:'qf', qf:[], sf:[], fn:[] };
-  const pairs = [];
-  let l=0, r=seeds.length-1;
-  while (l<r) {
-    pairs.push([seeds[l], seeds[l+1] ?? seeds[r], seeds[r-1] ?? seeds[r]]); // fallback
-    l+=2; r-=2;
-  }
-  // normalizar en parejas [A,B]
-  const qf = [];
-  for (let i=0;i<pairs.length;i++){
-    const a = pairs[i][0];
-    const b = pairs[i][2] ?? pairs[i][1];
-    qf.push({ a:[a], b:[b] }); // individuales (uno con uno). Si quisieras dobles, arma parejas reales.
-  }
-  state.bracket.qf = qf;
-  renderBracket();
-  persist();
-});
-
-function showBracketSection(){
-  bracketSection.classList.remove('hidden');
-  qfCol.classList.remove('hidden'); sfCol.classList.remove('hidden'); fnCol.classList.remove('hidden');
-}
-
-function renderBracket(){
-  const max = state.pointsToWin;
-
-  // Cuartos
-  qfList.innerHTML = '';
-  state.bracket.qf.forEach((m,i)=>{
+})();
