@@ -37,16 +37,16 @@
     </div>
 
     <!-- Pantalla 3: principal -->
-    <div id="main-screen" class="hidden w-full max-w-3xl bg-white shadow-md rounded-lg p-6">
-      <div class="flex justify-between items-center mb-4">
+    <div id="main-screen" class="hidden w-full max-w-4xl bg-white shadow-md rounded-lg p-6">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
         <h2 class="text-2xl font-bold text-green-700">Americano Zacatecas</h2>
         <div class="text-gray-600 text-sm" id="roundCounter">Ronda 0 de 0</div>
       </div>
 
       <!-- Configuración -->
       <div class="flex flex-wrap items-end justify-between gap-4 mb-4">
-        <div>
-          <label class="font-semibold mr-2">Puntos por partido:</label>
+        <div class="flex items-center gap-2">
+          <label class="font-semibold">Puntos por partido:</label>
           <select id="pointsSelect" class="border rounded px-2 py-1">
             <option value="3">3</option>
             <option value="4">4</option>
@@ -54,8 +54,9 @@
             <option value="7">7</option>
           </select>
         </div>
-        <div>
-          <label class="font-semibold mr-2">Canchas:</label>
+
+        <div class="flex items-center gap-2">
+          <label class="font-semibold">Canchas:</label>
           <select id="courtsSelect" class="border rounded px-2 py-1">
             <option value="1">1</option>
             <option value="2">2</option>
@@ -63,9 +64,17 @@
             <option value="4">4</option>
           </select>
         </div>
+
+        <div class="flex items-center gap-2">
+          <label class="font-semibold">Modo:</label>
+          <select id="modeSelect" class="border rounded px-2 py-1">
+            <option value="general">General</option>
+            <option value="por_cancha">Por cancha</option>
+          </select>
+        </div>
       </div>
 
-      <!-- Jugadores (área fija) -->
+      <!-- Jugadores -->
       <div id="playersSection" class="mb-6">
         <h3 class="text-lg font-semibold mb-2">Jugadores (máx. 8 por cancha):</h3>
 
@@ -80,7 +89,7 @@
       </div>
 
       <!-- Controles -->
-      <div class="flex justify-center gap-4">
+      <div class="flex flex-wrap justify-center gap-3">
         <button id="startBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
           Iniciar Americano
         </button>
@@ -89,6 +98,9 @@
         </button>
         <button id="resetBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
           Borrar jornada
+        </button>
+        <button id="bracketBtn" class="hidden bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+          Generar eliminatorias
         </button>
       </div>
 
@@ -123,6 +135,44 @@
             </thead>
             <tbody id="standingsBody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Eliminatorias -->
+      <div id="bracketSection" class="hidden mt-10">
+        <div class="flex flex-wrap items-end gap-3 mb-3">
+          <h3 class="text-lg font-semibold">Eliminatorias</h3>
+          <div id="bracketConfig" class="hidden flex items-center gap-2">
+            <label class="font-semibold" id="bracketLabel">Top global:</label>
+            <select id="bracketSelect" class="border rounded px-2 py-1">
+              <option value="8">Top 8</option>
+              <option value="4">Top 4</option>
+              <option value="2">Final directa (Top 2)</option>
+            </select>
+            <button id="createBracketBtn" class="bg-purple-600 hover:bg-purple-700 text-white py-1 px-3 rounded">Crear llave</button>
+          </div>
+        </div>
+
+        <div id="bracketView" class="grid gap-6 md:grid-cols-3">
+          <!-- Cuartos -->
+          <div id="qfCol" class="hidden">
+            <h4 class="font-semibold mb-2">Cuartos</h4>
+            <div id="qfList" class="space-y-3"></div>
+          </div>
+          <!-- Semis -->
+          <div id="sfCol" class="hidden">
+            <h4 class="font-semibold mb-2">Semifinales</h4>
+            <div id="sfList" class="space-y-3"></div>
+          </div>
+          <!-- Final -->
+          <div id="fnCol" class="hidden">
+            <h4 class="font-semibold mb-2">Final</h4>
+            <div id="fnList" class="space-y-3"></div>
+            <div id="championBox" class="hidden mt-4 p-4 rounded bg-green-50 border border-green-200">
+              <div class="font-semibold">🏆 Campeón:</div>
+              <div id="championName" class="text-lg font-bold text-green-700"></div>
+            </div>
+          </div>
         </div>
       </div>
 
