@@ -1,5 +1,13 @@
+/* giro suave para la pelota */
 @keyframes spin-slow {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-.animate-spin-slow { animation: spin-slow 6s linear infinite; }
+.animate-spin-slow {
+  animation: spin-slow 6s linear infinite;
+}
+
+/* opcional: mejorar scroll de tablas en móviles */
+table { border-collapse: collapse; }
+th, td { border-left: 1px solid #e5e7eb; }
+th:first-child, td:first-child { border-left: none; }
