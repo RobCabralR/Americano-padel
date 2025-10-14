@@ -8,18 +8,16 @@
   <link rel="stylesheet" href="./style.css" />
   <script type="module" src="./script.js" defer></script>
 </head>
-<!-- Layout columna: contenido crece y el footer se queda abajo -->
-<body class="bg-gray-100 min-h-screen flex flex-col">
 
-  <!-- Pelota -->
+<body class="bg-gray-100 min-h-screen flex flex-col">
+  <!-- Pelota (animación) -->
   <div class="absolute top-4 right-6">
     <img src="./assets/ball.svg" alt="Pelota" class="w-8 h-8 animate-spin-slow">
   </div>
 
-  <!-- CONTENIDO (crece) -->
+  <!-- CONTENIDO -->
   <main class="flex-1 w-full flex items-center justify-center p-4">
-
-    <!-- Login -->
+    <!-- Pantalla 1: portada -->
     <div id="login-screen" class="text-center">
       <h1 class="text-3xl font-bold mb-2 text-green-700">Padel-Americano Zacatecas 🎾</h1>
       <p class="text-gray-600 mb-4">Sistema de emparejamientos automáticos</p>
@@ -28,7 +26,7 @@
       </button>
     </div>
 
-    <!-- Password -->
+    <!-- Pantalla 2: contraseña -->
     <div id="password-screen" class="hidden text-center">
       <h2 class="text-2xl font-semibold mb-2">🔒 Acceso protegido</h2>
       <input type="password" id="passwordInput" class="border p-2 rounded" placeholder="Contraseña">
@@ -38,14 +36,14 @@
       <p id="errorMsg" class="text-red-500 mt-2 hidden">Contraseña incorrecta</p>
     </div>
 
-    <!-- Principal -->
+    <!-- Pantalla 3: principal -->
     <div id="main-screen" class="hidden w-full max-w-3xl bg-white shadow-md rounded-lg p-6">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-2xl font-bold text-green-700">Americano Zacatecas</h2>
         <div class="text-gray-600 text-sm" id="roundCounter">Ronda 0 de 0</div>
       </div>
 
-      <!-- Config -->
+      <!-- Configuración -->
       <div class="flex flex-wrap items-end justify-between gap-4 mb-4">
         <div>
           <label class="font-semibold mr-2">Puntos por partido:</label>
@@ -67,7 +65,7 @@
         </div>
       </div>
 
-      <!-- Jugadores (área fija, sin pop-up) -->
+      <!-- Jugadores (área fija) -->
       <div id="playersSection" class="mb-6">
         <h3 class="text-lg font-semibold mb-2">Jugadores (máx. 8 por cancha):</h3>
 
@@ -105,6 +103,29 @@
         <p class="text-gray-600 font-semibold">Descansan: <span id="restPlayers"></span></p>
       </div>
 
+      <!-- Tabla de posiciones -->
+      <div id="standingsSection" class="mt-8 hidden">
+        <h3 class="text-lg font-semibold mb-2">Tabla de posiciones</h3>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm border rounded">
+            <thead class="bg-gray-100">
+              <tr>
+                <th class="px-3 py-2 text-left">#</th>
+                <th class="px-3 py-2 text-left">Jugador</th>
+                <th class="px-3 py-2">PJ</th>
+                <th class="px-3 py-2">PG</th>
+                <th class="px-3 py-2">PP</th>
+                <th class="px-3 py-2">JF</th>
+                <th class="px-3 py-2">JC</th>
+                <th class="px-3 py-2">Dif</th>
+                <th class="px-3 py-2">Pts</th>
+              </tr>
+            </thead>
+            <tbody id="standingsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="text-center mt-6">
         <button id="logoutBtn" class="bg-gray-500 hover:bg-gray-600 text-white py-1 px-3 rounded">
           Salir
@@ -113,7 +134,7 @@
     </div>
   </main>
 
-  <!-- FOOTER pegado abajo -->
+  <!-- FOOTER -->
   <footer class="mt-auto py-4 text-gray-500 text-sm text-center">
     Desarrollado por Roberto Cabral
   </footer>
