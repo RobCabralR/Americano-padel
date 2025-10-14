@@ -29,6 +29,9 @@ const restPlayersSpan = document.getElementById('restPlayers');
 const roundCounter = document.getElementById('roundCounter');
 const logoutBtn = document.getElementById('logoutBtn');
 
+const standingsSection = document.getElementById('standingsSection');
+const standingsBody = document.getElementById('standingsBody');
+
 // ====== STATE ======
 let state = {
   players: [],
@@ -37,9 +40,10 @@ let state = {
   currentRound: 0,
   totalRounds: 0,
   lastRested: [],
-  matches: [], // partidos de la ronda actual (array de [a,b,c,d])
-  results: {}, // { indexDeCancha: {a:pts,b:pts} } (registrado)
-  finished: false
+  matches: [],   // partidos de la ronda actual: [p1,p2,p3,p4]
+  results: {},   // resultados registrados en la ronda actual
+  finished: false,
+  standings: {}  // { jugador: {PJ,PG,PP,JF,JC,Dif,Pts} }
 };
 
 let firebaseReady = false;
@@ -76,6 +80,7 @@ addPlayerBtn.addEventListener('click', () => {
   state.players.push(name);
   playerNameInput.value = '';
   renderPlayers();
+  ensureStandings();
   persist();
 });
 
@@ -92,7 +97,9 @@ function renderPlayers() {
     btn.addEventListener('click',()=>{
       const i = +btn.dataset.i;
       state.players.splice(i,1);
+      delete state.standings[Object.keys(state.standings)[i]];
       renderPlayers();
+      renderStandings();
       persist();
     });
   });
@@ -120,7 +127,8 @@ resetBtn.addEventListener('click', async ()=>{
     lastRested: [],
     matches: [],
     results: {},
-    finished: false
+    finished: false,
+    standings: {}
   };
   playersList.innerHTML = '';
   matchesList.innerHTML = '';
@@ -129,6 +137,8 @@ resetBtn.addEventListener('click', async ()=>{
   roundCounter.textContent = 'Ronda 0 de 0';
   startBtn.classList.remove('hidden');
   nextRoundBtn.classList.add('hidden');
+  standingsBody.innerHTML = '';
+  standingsSection.classList.add('hidden');
   localStorage.removeItem(SESSION_KEY());
   if (firebaseReady) await wipeOnline();
 });
@@ -171,10 +181,13 @@ startBtn.addEventListener('click', async ()=>{
   state.totalRounds = Math.max(1, state.players.length - 1);
   state.finished = false;
 
+  ensureStandings();
+  renderStandings();
+
   matchesSection.classList.remove('hidden');
   restSection.classList.remove('hidden');
   startBtn.classList.add('hidden');
-  nextRoundBtn.classList.add('hidden'); // se habilita cuando registren todos
+  nextRoundBtn.classList.add('hidden');
 
   await initOnlineState();
   nextRound();
@@ -191,7 +204,7 @@ function nextRound(){
   if (state.currentRound >= state.totalRounds){
     alert('¡Fin del Americano!');
     state.finished = true;
-    persist(); saveRoundOnline(); // última persistencia
+    persist(); saveRoundOnline();
     return;
   }
 
@@ -240,58 +253,124 @@ function renderRound(){
 
       state.results[i] = { a, b }; // registramos
       document.getElementById(`ok-${i}`).textContent = '✔ Registrado';
-      // si se registraron todos, habilita siguiente
+
+      // actualizar standings (una sola vez por partido)
+      const pairA = [ state.matches[i][0], state.matches[i][1] ];
+      const pairB = [ state.matches[i][2], state.matches[i][3] ];
+      applyMatchToStandings(pairA, pairB, a, b);
+      renderStandings();
+
+      // habilitar siguiente cuando todos estén
       if (Object.keys(state.results).length === state.matches.length) {
         nextRoundBtn.classList.remove('hidden');
       }
+
       persist(); saveRoundOnline();
     });
   });
 
   restPlayersSpan.textContent = state.lastRested.length ? state.lastRested.join(', ') : '—';
-  nextRoundBtn.classList.add('hidden'); // se mostrará cuando registren todos
+  nextRoundBtn.classList.add('hidden');
+}
+
+// ====== STANDINGS (Puntos 2/0) ======
+function ensureStandings() {
+  state.players.forEach(p => {
+    if (!state.standings[p]) {
+      state.standings[p] = { PJ:0, PG:0, PP:0, JF:0, JC:0, Dif:0, Pts:0 };
+    }
+  });
+}
+
+function applyMatchToStandings(pairA, pairB, scoreA, scoreB) {
+  const winners = scoreA > scoreB ? pairA : pairB;
+  const losers  = scoreA > scoreB ? pairB : pairA;
+
+  // suma PJ, PG/PP, JF, JC, Pts
+  winners.forEach(p => {
+    const s = state.standings[p];
+    s.PJ++; s.PG++; s.Pts += 2;
+    s.JF += (pairA.includes(p) ? scoreA : scoreB);
+    s.JC += (pairA.includes(p) ? scoreB : scoreA);
+  });
+  losers.forEach(p => {
+    const s = state.standings[p];
+    s.PJ++; s.PP++;
+    s.JF += (pairA.includes(p) ? scoreA : scoreB);
+    s.JC += (pairA.includes(p) ? scoreB : scoreA);
+  });
+
+  // recalcula Dif
+  Object.values(state.standings).forEach(s => s.Dif = s.JF - s.JC);
+}
+
+function sortStandings(entries) {
+  return entries.sort((a,b)=>{
+    if (b[1].Pts !== a[1].Pts) return b[1].Pts - a[1].Pts;
+    if (b[1].Dif !== a[1].Dif) return b[1].Dif - a[1].Dif;
+    if (a[1].JC !== b[1].JC) return a[1].JC - b[1].JC;
+    return a[0].localeCompare(b[0]);
+  });
+}
+
+function renderStandings() {
+  if (!state.standings || Object.keys(state.standings).length === 0) {
+    standingsSection.classList.add('hidden');
+    return;
+  }
+  standingsSection.classList.remove('hidden');
+  const rows = sortStandings(Object.entries(state.standings));
+  standingsBody.innerHTML = rows.map(([name,s],idx)=>`
+    <tr class="border-t">
+      <td class="px-3 py-2">${idx+1}</td>
+      <td class="px-3 py-2">${name}</td>
+      <td class="px-3 py-2 text-center">${s.PJ}</td>
+      <td class="px-3 py-2 text-center">${s.PG}</td>
+      <td class="px-3 py-2 text-center">${s.PP}</td>
+      <td class="px-3 py-2 text-center">${s.JF}</td>
+      <td class="px-3 py-2 text-center">${s.JC}</td>
+      <td class="px-3 py-2 text-center">${s.Dif}</td>
+      <td class="px-3 py-2 text-center font-semibold">${s.Pts}</td>
+    </tr>
+  `).join('');
 }
 
 // ====== PERSISTENCIA LOCAL ======
 function persist(){
-  const toSave = { ...state };
-  localStorage.setItem(SESSION_KEY(), JSON.stringify(toSave));
+  localStorage.setItem(SESSION_KEY(), JSON.stringify(state));
 }
 
 function tryResume(){
   const raw = localStorage.getItem(SESSION_KEY());
   if (!raw) return;
+
   const s = JSON.parse(raw);
-  if (s && !s.finished && (s.currentRound>0 || s.players.length>=4)) {
+  if (s) state = s;
+
+  pointsSelect.value = String(state.pointsToWin || 3);
+  courtsSelect.value = String(state.courts || 1);
+
+  if (state.players?.length) renderPlayers();
+  ensureStandings(); renderStandings();
+
+  if (!state.finished && (state.currentRound>0 || state.players.length>=4)) {
     const ok = confirm('Hay una jornada activa de hoy. ¿Deseas reanudarla?');
     if (ok){
-      state = s;
-      // reflejar selects y UI
-      pointsSelect.value = String(state.pointsToWin);
-      courtsSelect.value = String(state.courts);
-      renderPlayers();
       matchesSection.classList.remove('hidden');
       restSection.classList.remove('hidden');
       roundCounter.textContent = `Ronda ${state.currentRound} de ${state.totalRounds}`;
       renderRound();
       startBtn.classList.add('hidden');
-      // si ya estaban todos registrados, muestra siguiente
       if (Object.keys(state.results).length === state.matches.length && !state.finished) {
         nextRoundBtn.classList.remove('hidden');
       }
     } else {
       localStorage.removeItem(SESSION_KEY());
     }
-  } else {
-    // no hay ronda activa; solo restauramos lista de jugadores si existiera
-    if (s?.players?.length) {
-      state.players = s.players;
-      renderPlayers();
-    }
   }
 }
 
-// ====== FIREBASE (dinámico, no bloquea UI) ======
+// ====== FIREBASE ======
 async function initFirebase(){
   try{
     const { initializeApp } = await import('https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js');
@@ -311,14 +390,12 @@ async function initFirebase(){
     db = getDatabase(app);
     firebaseReady = true;
 
-    // Suscripción opcional (si quieres mostrar cambios de otros usuarios)
+    // Suscripción opcional (si quieres live-sync entre teléfonos)
     const baseRef = ref(db, `sesiones/${SESSION_KEY()}`);
     onValue(baseRef, (snap)=> {
-      // aquí podrías sincronizar en vivo; por ahora persistimos local solo si hace sentido
       // console.log('Remoto:', snap.val());
     });
 
-    // Helpers globales
     window._fb = { ref, set, onValue, remove };
     console.log('Firebase OK', new Date().toISOString());
   }catch(err){
