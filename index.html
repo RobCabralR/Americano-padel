@@ -1,105 +1,87 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Padel-Americano Zacatecas</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="./style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Americano Padel</title>
+  <link rel="stylesheet" href="./style.css" />
 </head>
-<body class="bg-slate-50 text-slate-800">
-  <!-- HEADER -->
-  <header class="w-full border-b bg-white sticky top-0 z-10">
-    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-      <div class="w-8 h-8 rounded-full bg-green-600/10 grid place-items-center">
-        <div class="w-3 h-3 rounded-full bg-green-600 animate-pulse"></div>
-      </div>
-      <h1 class="font-semibold text-lg">Padel-Americano Zacatecas</h1>
-      <span id="roundBadge" class="ml-auto text-sm text-slate-500">Ronda 0</span>
+<body>
+  <!-- Pantalla de acceso -->
+  <section id="landing">
+    <div class="card">
+      <h1>Americano Padel</h1>
+      <p class="muted">Para continuar, ingresa la contraseña.</p>
+      <button id="enterBtn" class="primary">Entrar</button>
     </div>
-  </header>
+  </section>
 
-  <main class="max-w-5xl mx-auto px-4 py-6">
-    <!-- LANDING (con contraseña) -->
-    <section id="landing" class="min-h-[60vh] grid place-items-center">
-      <div class="bg-white border rounded-2xl shadow p-8 max-w-lg w-full text-center">
-        <h2 class="text-2xl font-bold mb-2">Bienvenido 👋</h2>
-        <p class="text-slate-600 mb-6">Ingresa para gestionar la jornada de hoy.</p>
-        <button id="enterBtn" class="px-5 py-2 rounded bg-green-600 text-white hover:bg-green-700">
-          Entrar
-        </button>
-        <p class="mt-8 text-xs text-slate-400">Desarrollado por <span class="font-medium">Roberto Cabral</span></p>
+  <!-- App -->
+  <section id="app" class="hidden">
+    <header class="topbar">
+      <div class="left">
+        <h2>Gestión de Jornada</h2>
       </div>
-    </section>
-
-    <!-- APP -->
-    <section id="app" class="hidden space-y-6">
-      <!-- Controles -->
-      <div class="bg-white border rounded-2xl shadow p-4 sm:p-5">
-        <div class="flex flex-wrap items-center gap-3">
-          <label class="text-sm">Puntos por partido:
-            <select id="pointsSelect" class="border rounded px-2 py-1 ml-1">
-              <option>3</option><option>4</option><option>6</option><option>7</option>
-            </select>
-          </label>
-
-          <label class="text-sm">Canchas:
-            <select id="courtsSelect" class="border rounded px-2 py-1 ml-1">
-              <option>1</option><option>2</option><option>3</option><option>4</option>
-            </select>
-          </label>
-
-          <input id="newPlayer" class="border rounded px-3 py-1 flex-1 min-w-[220px]" placeholder="Ej. Roberto Cabral" />
-          <button id="addPlayer" class="px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700">Agregar jugador</button>
-
-          <div class="ml-auto flex items-center gap-2">
-            <button id="startBtn" class="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700">Iniciar Americano</button>
-            <button id="genAvailBtn" class="px-3 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 hidden">Generar partidos (libres)</button>
-            <button id="nextRoundBtn" class="px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700 hidden">Siguiente ronda</button>
-            <button id="clearBtn" class="px-3 py-1 rounded bg-rose-600 text-white hover:bg-rose-700">Borrar jornada</button>
-            <button id="exitBtn" class="px-3 py-1 rounded bg-slate-600 text-white hover:bg-slate-700">Salir</button>
-          </div>
-        </div>
+      <div class="right">
+        <label>Canchas:
+          <select id="courtsSelect">
+            <option>1</option>
+            <option>2</option>
+            <option>3</option>
+            <option>4</option>
+            <option>5</option>
+            <option>6</option>
+          </select>
+        </label>
+        <span class="sep"></span>
+        <strong>Ronda: <span id="roundLabel">1</span></strong>
+        <button id="nextRoundBtn" class="ghost">Siguiente ronda</button>
       </div>
+    </header>
 
+    <main class="grid">
       <!-- Jugadores -->
-      <div class="bg-white border rounded-2xl shadow p-4 sm:p-5">
-        <h3 class="font-semibold mb-3">Jugadores (máx. 8 por cancha):</h3>
-        <div id="playerList" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
-      </div>
+      <section class="panel">
+        <h3>Jugadores</h3>
+        <div class="row">
+          <input id="playerName" placeholder="Nombre del jugador" />
+          <button id="addPlayerBtn" class="primary">Agregar</button>
+        </div>
+        <ul id="playersList" class="list"></ul>
+      </section>
 
       <!-- Partidos -->
-      <div class="bg-white border rounded-2xl shadow p-4 sm:p-5">
-        <h3 class="font-semibold mb-3">Partidos actuales:</h3>
-        <div id="matchesArea" class="space-y-2"></div>
-        <div class="text-sm text-slate-500 mt-2" id="restLine"></div>
-      </div>
-
-      <!-- Tabla de posiciones -->
-      <div class="bg-white border rounded-2xl shadow p-4 sm:p-5">
-        <h3 class="font-semibold mb-3">Tabla de posiciones</h3>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left border-b">
-                <th class="py-2 px-2">#</th>
-                <th class="py-2 px-2">Jugador</th>
-                <th class="py-2 px-2">PJ</th>
-                <th class="py-2 px-2">PG</th>
-                <th class="py-2 px-2">PP</th>
-                <th class="py-2 px-2">JF</th>
-                <th class="py-2 px-2">JC</th>
-                <th class="py-2 px-2">Dif</th>
-                <th class="py-2 px-2">Pts</th>
-              </tr>
-            </thead>
-            <tbody id="standingsBody"></tbody>
-          </table>
+      <section class="panel">
+        <div class="panel-header">
+          <h3>Partidos (ronda <span id="roundLabel2">1</span>)</h3>
+          <button id="generateBtn" class="primary">Generar partidos</button>
         </div>
-        <p class="text-xs text-slate-400 mt-2">PJ: Partidos jugados · PG: Ganados · PP: Perdidos · JF: Juegos a favor · JC: Juegos en contra · Dif: (JF−JC) · Pts: 2 por victoria</p>
-      </div>
-    </section>
-  </main>
+        <div id="matchesList" class="matches"></div>
+      </section>
+
+      <!-- Tabla -->
+      <section class="panel">
+        <div class="panel-header">
+          <h3>Tabla de posiciones</h3>
+          <button id="resetBtn" class="danger ghost">Reiniciar todo</button>
+        </div>
+        <table id="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Jugador</th>
+              <th>Pts (games)</th>
+              <th>JG</th>
+              <th>JP</th>
+              <th>Partidos</th>
+              <th>Últ. ronda</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </section>
+    </main>
+  </section>
 
   <script type="module" src="./script.js"></script>
 </body>
