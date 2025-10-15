@@ -7,28 +7,9 @@ body{
   margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;
   background:linear-gradient(180deg,#0b0c10,#0e1218 20%,#0b0c10 100%); color:var(--text);
 }
-.hidden{display:none} .muted{color:var(--muted)} .small{font-size:.9rem}
+.muted{color:var(--muted)} .small{font-size:.9rem}
 .sep{display:inline-block;width:1px;height:20px;background:var(--sep);margin:0 12px}
 
-/* Landing 100% bloqueo */
-.landing{
-  position:fixed; inset:0; display:grid; place-items:center; padding:24px;
-  background:linear-gradient(180deg,rgba(11,12,16,.95),rgba(11,12,16,.95));
-  z-index:10;
-}
-.card{
-  background:radial-gradient(1200px 500px at 20% -10%, #142031 0, transparent 60%), #10151b;
-  border:1px solid var(--ring); border-radius:16px; padding:28px; max-width:420px; width:100%;
-  box-shadow:0 10px 30px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.03);
-}
-.card h1{margin:0 0 8px}
-button{border:1px solid var(--ring); background:#121a24; color:var(--text); padding:10px 14px; border-radius:10px; cursor:pointer}
-button.primary{background:linear-gradient(180deg,var(--pri),var(--pri-2)); border:0}
-button.ghost{background:transparent}
-button.danger{border-color:rgba(255,90,107,.4); color:#ff9aa5}
-button:disabled{opacity:.6; cursor:not-allowed}
-
-.app{opacity:1}
 .topbar{
   display:flex; align-items:center; justify-content:space-between;
   padding:16px 20px; position:sticky; top:0; background:rgba(11,12,16,.8); backdrop-filter: blur(6px);
@@ -51,6 +32,12 @@ button:disabled{opacity:.6; cursor:not-allowed}
 .panel-header{display:flex; align-items:center; justify-content:space-between}
 .row{display:flex; gap:8px; margin:8px 0 12px}
 input, select{background:#0f141c; border:1px solid var(--ring); color:var(--text); padding:10px; border-radius:10px; outline:none; width:100%}
+button{border:1px solid var(--ring); background:#121a24; color:var(--text); padding:10px 14px; border-radius:10px; cursor:pointer}
+button.primary{background:linear-gradient(180deg,var(--pri),var(--pri-2)); border:0}
+button.ghost{background:transparent}
+button.danger{border-color:rgba(255,90,107,.4); color:#ff9aa5}
+button:disabled{opacity:.6; cursor:not-allowed}
+
 .list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px}
 .badge{border:1px solid var(--ring); padding:6px 10px; border-radius:10px; display:flex; align-items:center; gap:8px; justify-content:space-between}
 .badge .x{opacity:.7; cursor:pointer}
