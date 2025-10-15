@@ -1,38 +1,50 @@
 /************** CONFIG **************/
-const STORAGE_KEY  = "padel.americano.state.v4";
+const STORAGE_KEY  = "padel.americano.state.v5";
+
+/* ===== Firebase =====
+ * 1) Abre tu proyecto en Firebase console → Configuración del proyecto → tus apps → "SDK de Firebase para la web".
+ * 2) Copia tu 'firebaseConfig' y pégalo aquí.
+ */
+const firebaseConfig = {
+  // TODO: pega tu config: apiKey, authDomain, databaseURL, projectId, storageBucket, messagingSenderId, appId
+};
+let db = null;
 
 /************** ESTADO **************/
 const state = {
-  // básico
+  // setup
   players: [],
   playerCourts: {},      // { nombre: cancha } (si courts>1)
   courts: 1,
-  target: 6,             // meta de juegos para ganar
+  target: 3,             // meta por defecto 3
+
+  // multi-dispositivo
+  roomId: "",            // sala actual
+  isHost: false,         // primer dispositivo que crea la sala
 
   // fases
   phase: "groups",       // "groups" | "bracket"
-  locked: false,         // true desde que se genera el primer partido
+  locked: false,         // bloquea setup al iniciar
 
   // rondas
-  round: 1,              // etiqueta global (mayor de las canchas)
-  courtRound: {},        // { "1": 1, "2": 1, ... } ronda por cancha
+  round: 1,              // etiqueta global (>= max por cancha)
+  courtRound: {},        // { "1": 1, "2": 1, ... }
   courtComplete: {},     // { "1": bool, ... }
 
-  // partidos y tablas
+  // partidos & tablas
   matches: [],           // {id, round, court, pairs, status:'open'|'done', scoreA, scoreB}
   standings: {},         // { jugador: {pts,wins,losses,played,lastRound} }
 
-  // historial (sólo lo YA JUGADO para “no repetir” real)
+  // historial “real” (JUGADO)
   playedWith: {},        // { jugador: Set() }
   playedAgainst: {},     // { jugador: Set() }
+  pairHistory: {},       // { "1": Set("A|B",...) }
+  fixtureHistory: {},    // { "1": Set("A|B_vs_C|D",...) }
 
-  // evitar repetir parejas y fixtures en la misma cancha
-  pairHistory: {},       // { "1": Set("A|B",...) }  // parejas jugadas en esa cancha
-  fixtureHistory: {},    // { "1": Set("A|B_vs_C|D",...) } partidos jugados en esa cancha
-
-  // métricas por equilibrio
-  lastPlayedRound: {},   // { jugador: ronda global última vez que jugó }
-  playedOnCourt: {},     // { jugador: { "1": n, "2": n } } recuento por cancha
+  // métricas
+  lastPlayedRound: {},   // { jugador: ronda }
+  playedOnCourt: {},     // { jugador: { "1": n, "2": n } }
+  updatedAt: 0           // timestamp para resolver concurrencia simple
 };
 
 /************** DOM **************/
@@ -44,46 +56,98 @@ const playerName = $("#playerName"), addPlayerBtn=$("#addPlayerBtn");
 const playersList=$("#playersList"), assignHint=$("#assignHint");
 const matchesList=$("#matchesList"), generateBtn=$("#generateBtn");
 const tbody=$("#tbody"), resetBtn=$("#resetBtn");
+const roomIdTxt=$("#roomIdTxt"), copyRoomBtn=$("#copyRoomBtn");
 
-/************** PERSISTENCIA **************/
+/************** PERSISTENCIA LOCAL **************/
 const serSets = (obj)=>Object.fromEntries(Object.entries(obj||{}).map(([k,v])=>[k, Array.from(v||[])]));
 const revSets = (obj)=>Object.fromEntries(Object.entries(obj||{}).map(([k,v])=>[k, new Set(Array.isArray(v)?v:Object.keys(v||{}))]));
 
-function persist(){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    ...state,
-    playedWith: serSets(state.playedWith),
-    playedAgainst: serSets(state.playedAgainst),
-    pairHistory: Object.fromEntries(Object.entries(state.pairHistory||{}).map(([c,set])=>[c, Array.from(set||[])])),
-    fixtureHistory: Object.fromEntries(Object.entries(state.fixtureHistory||{}).map(([c,set])=>[c, Array.from(set||[])])),
-  }));
+function persistLocal(s=state){
+  const safe = {
+    ...s,
+    playedWith: serSets(s.playedWith),
+    playedAgainst: serSets(s.playedAgainst),
+    pairHistory: Object.fromEntries(Object.entries(s.pairHistory||{}).map(([c,set])=>[c, Array.from(set||[])])),
+    fixtureHistory: Object.fromEntries(Object.entries(s.fixtureHistory||{}).map(([c,set])=>[c, Array.from(set||[])])),
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
 }
-function load(){
+function loadLocal(){
   const raw = localStorage.getItem(STORAGE_KEY); if(!raw) return;
   try{
     const s = JSON.parse(raw);
-    state.players = s.players||[];
-    state.playerCourts = s.playerCourts||{};
-    state.courts = s.courts||1;
-    state.target = s.target||6;
+    Object.assign(state, s, {
+      playedWith: revSets(s.playedWith),
+      playedAgainst: revSets(s.playedAgainst),
+      pairHistory: Object.fromEntries(Object.entries(s.pairHistory||{}).map(([c,arr])=>[c, new Set(arr||[])])),
+      fixtureHistory: Object.fromEntries(Object.entries(s.fixtureHistory||{}).map(([c,arr])=>[c, new Set(arr||[])])),
+    });
+  }catch(e){ console.warn("No se pudo cargar estado local:", e); }
+}
 
-    state.phase = s.phase||"groups";
-    state.locked = !!s.locked;
+/************** FIREBASE (CLOUD SYNC) **************/
+function initFirebase(){
+  if(!firebaseConfig || !firebaseConfig.apiKey) return; // sin config → sólo local
+  const app = firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
 
-    state.round = s.round||1;
-    state.courtRound = s.courtRound||{};
-    state.courtComplete = s.courtComplete||{};
+  // Sala por URL (#xxxxx) o local
+  let rid = (location.hash || "").replace("#","").trim();
+  if(!rid){
+    rid = Math.random().toString(36).slice(2,8);
+    location.hash = rid;
+    state.isHost = true;
+  }
+  state.roomId = rid;
+  roomIdTxt.textContent = rid;
 
-    state.matches = s.matches||[];
-    state.standings = s.standings||{};
+  subscribeCloud();
+}
+let unsubscribed = false;
+function subscribeCloud(){
+  if(!db) return;
+  const ref = db.ref(`/sesiones/${state.roomId}/state`);
+  ref.on("value", snap=>{
+    const cloud = snap.val();
+    if(!cloud){ // primera vez: sube estado local como base
+      if(state.isHost){
+        pushCloud();
+      }
+      return;
+    }
+    // anti-bucle: aplica sólo si es más nuevo
+    if(cloud.updatedAt && cloud.updatedAt <= state.updatedAt) return;
 
-    state.playedWith = revSets(s.playedWith);
-    state.playedAgainst = revSets(s.playedAgainst);
-    state.pairHistory = Object.fromEntries(Object.entries(s.pairHistory||{}).map(([c,arr])=>[c, new Set(arr||[])]));
-    state.fixtureHistory = Object.fromEntries(Object.entries(s.fixtureHistory||{}).map(([c,arr])=>[c, new Set(arr||[])]));
-    state.lastPlayedRound = s.lastPlayedRound||{};
-    state.playedOnCourt = s.playedOnCourt||{};
-  }catch(e){ console.warn("No se pudo cargar estado:", e); }
+    // aplica remoto
+    const incoming = {
+      ...cloud,
+      playedWith: revSets(cloud.playedWith),
+      playedAgainst: revSets(cloud.playedAgainst),
+      pairHistory: Object.fromEntries(Object.entries(cloud.pairHistory||{}).map(([c,arr])=>[c, new Set(arr||[])])),
+      fixtureHistory: Object.fromEntries(Object.entries(cloud.fixtureHistory||{}).map(([c,arr])=>[c, new Set(arr||[])])),
+    };
+    Object.assign(state, incoming);
+    renderAll();
+    persistLocal(state);
+  });
+}
+let pushTimer=null;
+function pushCloud(){
+  if(!db) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(()=>{
+    const payload = {
+      ...state,
+      playedWith: serSets(state.playedWith),
+      playedAgainst: serSets(state.playedAgainst),
+      pairHistory: Object.fromEntries(Object.entries(state.pairHistory||{}).map(([c,set])=>[c, Array.from(set||[])])),
+      fixtureHistory: Object.fromEntries(Object.entries(state.fixtureHistory||{}).map(([c,set])=>[c, Array.from(set||[])])),
+      updatedAt: Date.now()
+    };
+    state.updatedAt = payload.updatedAt;
+    db.ref(`/sesiones/${state.roomId}/state`).set(payload);
+    persistLocal(state);
+  }, 120);
 }
 
 /************** HELPERS **************/
@@ -97,8 +161,7 @@ function ensurePlayerInit(name){
 }
 const pairKey=(a,b)=>[a,b].sort().join("|");
 const fixtureKey=(a,b,c,d)=>[pairKey(a,b), pairKey(c,d)].sort().join("_vs_");
-
-function canEditSetup(){ return !state.locked && state.phase==="groups"; }
+const canEditSetup = ()=> !state.locked && state.phase==="groups";
 
 function addPlayer(name){
   if(!canEditSetup()) return alert("No se puede agregar: el americano ya inició.");
@@ -107,7 +170,8 @@ function addPlayer(name){
   if(state.players.includes(n)) return alert("Ese nombre ya existe.");
   state.players.push(n);
   ensurePlayerInit(n);
-  persist(); renderAll();
+  pushCloud();
+  renderAll();
 }
 function removePlayer(name){
   if(!canEditSetup()) return alert("No se puede eliminar: el americano ya inició.");
@@ -117,7 +181,7 @@ function removePlayer(name){
   delete state.playerCourts[name]; delete state.lastPlayedRound[name];
   delete state.playedOnCourt[name];
   state.matches = state.matches.filter(m=> m.status==="done" || !m.pairs.flat().includes(name));
-  persist(); renderAll();
+  pushCloud(); renderAll();
 }
 
 function buildCourtBuckets(){
@@ -138,8 +202,19 @@ function availablePlayersByCourt(court){
 
 /************** GENERACIÓN (GRUPOS) **************/
 function chooseFourForCourt(court){
-  // Elegimos 4 priorizando quienes menos han jugado en ESTA cancha y quienes descansaron más
+  // Si hay impar pero >=5 asignados, rota descansos (comodín automático)
+  const assigned = buildCourtBuckets()[court];
   const avail = availablePlayersByCourt(court);
+  if(assigned.length >= 5 && avail.length < 4){
+    // trae alguno que descansó más (no busy por definición, pero si hay 3 avail, busca 1 extra de los asignados no usados en abiertos previos)
+    const pool = Array.from(new Set([...avail, ...assigned]));
+    const scored = pool.map(p=>{
+      const playedHere = (state.playedOnCourt[p]?.[court]||0);
+      const last = state.lastPlayedRound[p] ?? -1;
+      return {p, score: playedHere*10 + (last)};
+    }).sort((a,b)=>a.score-b.score).map(x=>x.p);
+    return scored.slice(0,4);
+  }
   if(avail.length < 4) return null;
 
   const scored = avail.map(p=>{
@@ -168,13 +243,10 @@ function choosePairsForCourt(players4, court){
     const pk1=pairKey(a,b), pk2=pairKey(c,d);
     const fk = fixtureKey(a,b,c,d);
 
-    // no repetir partido ya jugado
-    if(usedFixture.has(fk)) score += 1000;
-    // no repetir pareja ya jugada
+    if(usedFixture.has(fk)) score += 1000; // no repetir partido
     if(usedPairs.has(pk1)) score += 200;
     if(usedPairs.has(pk2)) score += 200;
 
-    // evitar repetir compañero y rivales
     score += (state.playedWith[a]?.has(b)?20:0) + (state.playedWith[c]?.has(d)?20:0);
     [ [a,c],[a,d],[b,c],[b,d] ].forEach(([x,y])=>{
       if(state.playedAgainst[x]?.has(y)) score += 5;
@@ -183,33 +255,27 @@ function choosePairsForCourt(players4, court){
     if(score<bestScore){ bestScore=score; best=[[a,b],[c,d]]; }
   }
   if(!best) return null;
-  // si igualmente todo está repetido (puntuación muy alta), indicamos que no hay fixture nuevo
-  const pkCheck = fixtureKey(best[0][0],best[0][1],best[1][0],best[1][1]);
-  const already = (state.fixtureHistory[court]||new Set()).has(pkCheck);
-  return already ? null : best;
+  const fk = fixtureKey(best[0][0],best[0][1],best[1][0],best[1][1]);
+  if((state.fixtureHistory[court]||new Set()).has(fk)) return null;
+  return best;
 }
 
 function markCourtCompleteIfStuck(court){
-  // Si no hay suficientes disponibles o todas las combinaciones ya existen, marcamos completa
-  const avail = availablePlayersByCourt(court);
-  if(avail.length < 4){ state.courtComplete[court]=true; return true; }
-
-  // Prueba rápida: intenta formar un conjunto; si no hay, completa
-  const pick = chooseFourForCourt(court);
-  if(!pick){ state.courtComplete[court]=true; return true; }
-  const pairs = choosePairsForCourt(pick, String(court));
+  const assigned = buildCourtBuckets()[court];
+  const canForm = chooseFourForCourt(court);
+  if(!canForm){ state.courtComplete[court]=true; return true; }
+  const pairs = choosePairsForCourt(canForm, String(court));
   if(!pairs){ state.courtComplete[court]=true; return true; }
-
   return false;
 }
 
 function generateMatchesForGroups(){
-  state.locked = true; // bloquear setup desde el primer intento
-  // crea 1 partido por cancha si es posible
+  state.locked = true; // bloquea setup desde el primer intento
+
   for(let c=1;c<=state.courts;c++){
     const court = String(c);
     if(state.courtComplete[court]) continue;
-    const alreadyOpen = state.matches.some(m=>m.court===c && m.round===state.courtRound[court] && m.status==="open");
+    const alreadyOpen = state.matches.some(m=>m.court===c && m.round===(state.courtRound[court]||1) && m.status==="open");
     if(alreadyOpen) continue;
 
     if(markCourtCompleteIfStuck(court)) continue;
@@ -218,7 +284,6 @@ function generateMatchesForGroups(){
     const pairs = choosePairsForCourt(four, court);
     if(!pairs){ state.courtComplete[court]=true; continue; }
 
-    // abrir partido
     const rnd = state.courtRound[court] || 1;
     state.matches.push({
       id: crypto.randomUUID(),
@@ -231,21 +296,18 @@ function generateMatchesForGroups(){
     });
   }
 
-  // ronda global = max de rondas por cancha
   const maxRound = Math.max(1, ...Object.values(state.courtRound).map(x=>x||1));
   state.round = maxRound;
-  persist(); renderAll();
 
-  // si TODAS las canchas completas => ofrecer pasar a eliminatoria
+  pushCloud(); renderAll();
+
   const allDone = Array.from({length:state.courts},(_,i)=>String(i+1)).every(k=>state.courtComplete[k]);
-  if(allDone && state.phase==="groups"){
-    renderAdvanceToBracketButton();
-  }
+  if(allDone && state.phase==="groups"){ renderAdvanceToBracketButton(); }
 }
 
 /************** GUARDADO RESULTADOS **************/
 function validateScore(a,b){
-  const T = Number(state.target||6);
+  const T = Number(state.target||3);
   if(!Number.isInteger(a) || !Number.isInteger(b)) return "Marcador inválido.";
   if(a<0 || b<0) return "No se aceptan negativos.";
   if(a===b) return "No puede haber empate.";
@@ -297,67 +359,69 @@ function saveResult(matchId, sA, sB){
   state.courtRound[courtKey] = (state.courtRound[courtKey]||1) + 1;
   state.round = Math.max(state.round, state.courtRound[courtKey]);
 
-  persist();
-  renderAll();
+  pushCloud(); renderAll();
 
-  // intenta generar siguiente en esa cancha; si ya no hay fixture nuevo, se marca completa
   if(!markCourtCompleteIfStuck(courtKey)){
     generateMatchesForGroups();
   }else{
-    // si todas completas => botón para eliminatoria
     const allDone = Array.from({length:state.courts},(_,i)=>String(i+1)).every(k=>state.courtComplete[k]);
-    if(allDone && state.phase==="groups"){
-      renderAdvanceToBracketButton();
-    }
+    if(allDone && state.phase==="groups"){ renderAdvanceToBracketButton(); }
   }
 }
 
 /************** BRACKET **************/
-function pickBracketPlayers(){
-  // Toma el top equilibrado por cancha:
-  // - tomamos top K por cancha donde K = 2 (cuartos) * #canchas → produce 4,8,12...
-  const perCourt = 2; // puedes subirlo si quieres semifinal directa con 1 cancha
-  const K = perCourt * state.courts;
+function nearestPow2(n){ const p=[2,4,8,16,32]; for(let i=p.length-1;i>=0;i--){ if(p[i]<=n) return p[i]; } return 2; }
 
-  // ranking por cancha
+function pickBracketPlayers(){
   const buckets = buildCourtBuckets();
-  const byCourtSorted = {};
+  // Regla:
+  //  - 1 cancha: si >=6 jugadores → top 4; si 4-5 → top 4; (<4 no hay)
+  //  - 2+ canchas: por cancha, si >=6 → top 4; si 4-5 → top 2; (<4 → 0)
+  const perCourtPicked = [];
+  const manyCourts = state.courts >= 2;
+
   for(let c=1;c<=state.courts;c++){
     const court = String(c);
     const players = (buckets[c]||[]);
     const rows = players.map(name=>({name, ...state.standings[name], court:c}))
       .sort((a,b)=> b.pts - a.pts || b.wins - a.wins || a.losses - b.losses || a.name.localeCompare(b.name));
-    byCourtSorted[court] = rows;
+    let take = 0;
+    if(players.length >= 6) take = manyCourts ? 4 : 4;
+    else if(players.length >= 4) take = manyCourts ? 2 : 4;
+    else take = 0;
+    perCourtPicked.push(...rows.slice(0,take).map(r=>r.name));
   }
 
-  // toma los primeros perCourt de cada cancha (si hay menos, toma los que haya)
-  const picked = [];
-  for(let c=1;c<=state.courts;c++){
-    const court = String(c);
-    picked.push(...(byCourtSorted[court]||[]).slice(0, perCourt).map(r=>r.name));
-  }
+  // Si total no es potencia de 2, recorta a la potencia de 2 inferior usando ranking global
+  if(perCourtPicked.length < 4) return []; // no alcanza
+  const pow2 = nearestPow2(perCourtPicked.length);
+  if(perCourtPicked.length === pow2) return perCourtPicked;
 
-  // si sobra/ falta para potencia de 2, ajustamos a mayor potencia de 2 <= length
-  const pow2 = [2,4,8,16,32].filter(x=>x<=picked.length).pop() || 2;
-  return picked.slice(0, pow2);
+  // ranking global para recortar
+  const all = Object.keys(state.standings).map(name=>({name, ...state.standings[name]}))
+    .sort((a,b)=> b.pts - a.pts || b.wins - a.wins || a.losses - b.losses || a.name.localeCompare(b.name));
+  const selectedSet = new Set(perCourtPicked);
+  const filtered = all.map(x=>x.name).filter(n=>selectedSet.has(n)).slice(0, pow2);
+  return filtered;
 }
 
-function createBracket(){ // simple: 1 vs último, 2 vs penúltimo, etc.
+function createBracket(){
   const players = pickBracketPlayers();
   if(players.length < 4){ alert("No hay suficientes jugadores para eliminatoria."); return; }
 
   state.phase = "bracket";
   // limpiar abiertos
   state.matches = state.matches.filter(m=>m.status==="done");
-  // bracket ronda 1
+
+  // bracket inicial: 1 vs último, 2 vs penúltimo...
+  const seeds = [...players];
   const pairs = [];
-  for(let i=0;i<players.length/2;i++){
-    const a = players[i];
-    const b = players[players.length-1-i];
+  for(let i=0;i<seeds.length/2;i++){
+    const a = seeds[i];
+    const b = seeds[seeds.length-1-i];
     pairs.push([a,b]);
   }
-  // cada partido del bracket es singles *representado* como dobles 1v1 con huecos
-  // o si quieres, emparejamos en dobles de 2 en 2 (rápido):
+  // Partidos de “dobles” emparejando seeds de 2 en 2
   const matches = [];
   for(let i=0;i<pairs.length;i+=2){
     const t1 = [pairs[i][0], pairs[i][1]];
@@ -373,8 +437,9 @@ function createBracket(){ // simple: 1 vs último, 2 vs penúltimo, etc.
     });
   }
   state.courtRound = {}; state.courtComplete = {};
+  state.round = 1;
   state.matches.push(...matches);
-  persist(); renderAll();
+  pushCloud(); renderAll();
 }
 
 /************** RENDER **************/
@@ -382,7 +447,6 @@ function renderPlayers(){
   playersList.innerHTML="";
   assignHint.style.display = state.courts>1 ? "block":"none";
 
-  // bloquear inputs si ya inició
   playerName.disabled = !canEditSetup();
   addPlayerBtn.disabled = !canEditSetup();
   courtsSelect.disabled = !canEditSetup();
@@ -402,7 +466,7 @@ function renderPlayers(){
     li.querySelector(".x").addEventListener("click",()=>removePlayer(p));
     if(state.courts>1 && canEditSetup()){
       li.querySelector(".pcourt").addEventListener("change",(e)=>{
-        state.playerCourts[p]=Number(e.target.value); persist();
+        state.playerCourts[p]=Number(e.target.value); pushCloud();
       });
     }
     playersList.appendChild(li);
@@ -410,37 +474,22 @@ function renderPlayers(){
 }
 
 function renderAdvanceToBracketButton(){
-  // pinta botón grande cuando todas las canchas completaron grupos
   const existing = $("#advanceBracketBtn");
   if(existing) return;
   const btn = document.createElement("button");
   btn.id = "advanceBracketBtn";
   btn.className = "primary";
-  btn.style = "margin:10px 0";
+  btn.style = "margin:10px 0; width:100%";
   btn.textContent = "Crear eliminatoria";
   btn.addEventListener("click", createBracket);
   matchesList.prepend(btn);
 }
 
 function renderMatches(){
+  // Limpio lista
   matchesList.innerHTML="";
-  // botón generar (grupos) o texto según fase
-  const headerRow = document.createElement("div");
-  if(state.phase==="groups"){
-    const gbtn = document.createElement("button");
-    gbtn.className="primary";
-    gbtn.textContent="Generar partidos";
-    gbtn.addEventListener("click", generateMatchesForGroups);
-    headerRow.appendChild(gbtn);
-    matchesList.appendChild(headerRow);
-  }else{
-    const tag = document.createElement("div");
-    tag.className="muted";
-    tag.textContent="Fase: Eliminatoria";
-    matchesList.appendChild(tag);
-  }
 
-  // etiqueta de canchas completas
+  // Nota de canchas completas
   for(let c=1;c<=state.courts;c++){
     const court = String(c);
     if(state.phase==="groups" && state.courtComplete[court]){
@@ -451,15 +500,15 @@ function renderMatches(){
     }
   }
 
-  const currentRound = state.phase==="groups" ? Math.max(1, ...Object.values(state.courtRound).map(x=>x||1)) : state.round;
-  const matches = state.matches
-    .filter(m=> state.phase==="groups" ? (m.round=== (state.courtRound[String(m.court)]||1)) : (m.round===state.round))
-    .sort((a,b)=>a.court-b.court);
+  // Qué muestro
+  const matches = state.phase==="groups"
+    ? state.matches.filter(m=> m.status==="open").sort((a,b)=>a.court-b.court)
+    : state.matches.filter(m=> m.round===state.round).sort((a,b)=>a.court-b.court);
 
   if(matches.length===0){
     const hint=document.createElement("div");
     hint.className="muted";
-    hint.textContent= state.phase==="groups"
+    hint.textContent = state.phase==="groups"
       ? "No hay partidos abiertos en esta ronda. Pulsa “Generar partidos”."
       : "Partidos de eliminatoria listos.";
     matchesList.appendChild(hint);
@@ -515,19 +564,15 @@ function renderTable(){
 }
 
 function renderAll(){
-  // ronda global = max rondas canchas en grupos; en bracket usa state.round
+  // ronda global (grupos) = max rondas canchas actuales; en bracket usa state.round
   const maxRound = Math.max(1, ...Object.values(state.courtRound).map(x=>x||1));
-  roundLabel.textContent= String(state.phase==="groups" ? maxRound : state.round);
-  roundLabel2.textContent=roundLabel.textContent;
+  const lbl = state.phase==="groups" ? maxRound : state.round;
+  roundLabel.textContent= String(lbl);
+  roundLabel2.textContent= String(lbl);
 
   courtsSelect.value=String(state.courts);
   targetSelect.value=String(state.target);
-
-  // deshabilitar UI según lock
-  courtsSelect.disabled = !canEditSetup();
-  targetSelect.disabled = !canEditSetup();
-  addPlayerBtn.disabled = !canEditSetup();
-  playerName.disabled = !canEditSetup();
+  roomIdTxt.textContent = state.roomId || "—";
 
   renderPlayers();
   renderMatches();
@@ -536,15 +581,28 @@ function renderAll(){
 
 /************** EVENTOS **************/
 document.addEventListener("DOMContentLoaded", ()=>{
-  load();
-  // valores iniciales por cancha
+  loadLocal();
+
+  // iniciar rondas por cancha
   for(let c=1;c<=state.courts;c++){
     const k=String(c);
     if(state.courtRound[k]==null) state.courtRound[k]=1;
     if(state.courtComplete[k]==null) state.courtComplete[k]=false;
   }
   state.players.forEach(ensurePlayerInit);
-  persist(); renderAll();
+  persistLocal(state);
+  renderAll();
+
+  // Firebase
+  initFirebase();
+
+  // UI
+  copyRoomBtn.addEventListener("click", ()=>{
+    const url = location.href.split("#")[0] + "#" + (state.roomId || "");
+    navigator.clipboard.writeText(url);
+    copyRoomBtn.textContent="Copiado";
+    setTimeout(()=>copyRoomBtn.textContent="Copiar",1200);
+  });
 
   courtsSelect.addEventListener("change", ()=>{
     if(!canEditSetup()) return alert("No puedes cambiar canchas: el americano ya inició.");
@@ -553,13 +611,13 @@ document.addEventListener("DOMContentLoaded", ()=>{
     state.courtRound = {}; state.courtComplete = {};
     for(let c=1;c<=state.courts;c++){ state.courtRound[String(c)]=1; state.courtComplete[String(c)]=false; }
     for(const p of state.players){ state.playerCourts[p]=Math.min(Math.max(1,state.playerCourts[p]||1), state.courts); }
-    persist(); renderAll();
+    pushCloud(); renderAll();
   });
 
   targetSelect.addEventListener("change", ()=>{
     if(!canEditSetup()) return alert("No puedes cambiar la meta: el americano ya inició.");
     state.target = Number(targetSelect.value);
-    persist(); renderAll();
+    pushCloud(); renderAll();
   });
 
   addPlayerBtn.addEventListener("click", ()=>{ addPlayer(playerName.value); playerName.value=""; playerName.focus(); });
@@ -571,14 +629,16 @@ document.addEventListener("DOMContentLoaded", ()=>{
     if(!confirm("¿Seguro que deseas reiniciar todo?")) return;
     localStorage.removeItem(STORAGE_KEY);
     Object.assign(state, {
-      players:[], playerCourts:{}, courts:1, target:6,
+      players:[], playerCourts:{}, courts:1, target:3,
+      roomId: state.roomId, isHost: state.isHost,
       phase:"groups", locked:false,
       round:1, courtRound:{ "1":1 }, courtComplete:{ "1":false },
       matches:[],
       standings:{}, playedWith:{}, playedAgainst:{},
       pairHistory:{}, fixtureHistory:{},
-      lastPlayedRound:{}, playedOnCourt:{}
+      lastPlayedRound:{}, playedOnCourt:{},
+      updatedAt: Date.now()
     });
-    persist(); renderAll();
+    pushCloud(); renderAll();
   });
 });
