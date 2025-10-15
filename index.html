@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Americano Padel</title>
-  <link rel="stylesheet" href="./style.css?v=5" />
+  <link rel="stylesheet" href="./style.css?v=6" />
   <!-- Firebase (CDN) -->
   <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -12,11 +12,9 @@
 <body>
   <section id="app" class="app">
     <header class="topbar">
-      <div class="left">
-        <h2>Gestión de Jornada</h2>
-      </div>
+      <div class="left"><h2>Gestión de Jornada</h2></div>
       <div class="right" style="display:flex;gap:10px;align-items:center;">
-        <div id="roomBadge" class="badge" title="Comparte este ID para que otros anoten resultados">
+        <div id="roomBadge" class="badge" title="Comparte este link para anotar en vivo">
           Sala: <strong id="roomIdTxt">—</strong>
           <button id="copyRoomBtn" class="ghost" style="margin-left:6px;">Copiar</button>
         </div>
@@ -38,7 +36,7 @@
     </header>
 
     <main class="grid3">
-      <!-- Columna 1: Jugadores -->
+      <!-- Jugadores -->
       <section class="panel area-left">
         <h3>Jugadores</h3>
         <div class="row">
@@ -54,7 +52,7 @@
         </div>
       </section>
 
-      <!-- Columna 2: Partidos -->
+      <!-- Partidos -->
       <section class="panel area-center">
         <div class="panel-header">
           <h3>Partidos (ronda <span id="roundLabel2">1</span>)</h3>
@@ -63,7 +61,7 @@
         <div id="matchesList" class="matches"></div>
       </section>
 
-      <!-- Columna 3: Tabla -->
+      <!-- Tabla -->
       <section class="panel area-right">
         <div class="panel-header"><h3>Tabla de posiciones</h3></div>
         <table id="table">
@@ -79,6 +77,6 @@
     </main>
   </section>
 
-  <script src="./script.js?v=5" defer></script>
+  <script src="./script.js?v=6" defer></script>
 </body>
 </html>
