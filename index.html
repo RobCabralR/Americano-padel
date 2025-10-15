@@ -1,117 +1,109 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Padel-Americano Zacatecas</title>
-  <link rel="stylesheet" href="./style.css" />
+  <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-50 min-h-screen flex flex-col">
+<body class="bg-gray-50 text-slate-800">
 
   <!-- Header -->
-  <header class="w-full py-4">
-    <div class="max-w-5xl mx-auto px-4 flex items-center justify-between">
+  <header class="w-full border-b bg-white">
+    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <span class="inline-block w-7 h-7 rounded-full bg-green-600"></span>
-        <h1 class="text-xl md:text-2xl font-semibold text-green-700">
-          Padel-Americano Zacatecas <span class="inline-block">🎾</span>
+        <div class="w-8 h-8 rounded-full bg-green-600 animate-pulse"></div>
+        <h1 class="text-xl sm:text-2xl font-semibold text-green-700">
+          Padel-Americano Zacatecas
         </h1>
       </div>
+      <div id="roundBadge" class="text-sm text-slate-600">Ronda 0</div>
     </div>
   </header>
 
-  <!-- Portada -->
-  <main id="cover" class="flex-1 flex items-center justify-center">
+  <!-- Landing -->
+  <section id="landing" class="min-h-[60vh] flex items-center justify-center">
     <div class="text-center">
-      <h2 class="text-2xl md:text-3xl font-bold text-green-700 mb-2">
-        Padel-Americano Zacatecas
-      </h2>
-      <p class="text-gray-500 mb-6">Sistema de emparejamientos automáticos</p>
-
-      <!-- Fallback inline a window.PAZ.enter() -->
+      <h2 class="text-2xl font-semibold mb-2">Sistema de emparejamientos automáticos</h2>
       <button id="enterBtn"
-        onclick="window.PAZ && window.PAZ.enter && window.PAZ.enter()"
-        class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded">
+        class="mt-4 inline-flex items-center gap-2 px-6 py-2 rounded-md bg-green-600 text-white hover:bg-green-700">
         Entrar
       </button>
     </div>
-  </main>
+  </section>
 
   <!-- App -->
-  <section id="app" class="hidden flex-1">
-    <div class="max-w-5xl mx-auto px-4 pb-24">
-      <div class="w-full mt-8">
-        <div class="bg-white rounded-xl shadow p-5">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="text-lg font-semibold text-green-700">Americano Zacatecas</div>
-            <div class="text-sm text-gray-500">Ronda <span id="roundLabel">0</span></div>
-          </div>
-
-          <div class="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
-            <div class="md:col-span-4">
-              <label class="block text-sm text-gray-600 mb-1">Puntos por partido</label>
-              <select id="pointsSelect" class="w-full border rounded px-3 py-2">
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="6">6</option>
-                <option value="7">7</option>
-              </select>
-            </div>
-
-            <div class="md:col-span-4">
-              <label class="block text-sm text-gray-600 mb-1">Canchas</label>
-              <select id="courtsSelect" class="w-full border rounded px-3 py-2">
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-              </select>
-            </div>
-
-            <div class="md:col-span-4">
-              <label class="block text-sm text-gray-600 mb-1">Nombre del jugador</label>
-              <div class="flex gap-2">
-                <input id="playerInput" type="text" class="flex-1 border rounded px-3 py-2"
-                       placeholder="Ej. Roberto Cabral" />
-                <button id="addPlayerBtn"
-                        class="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 rounded">
-                  Agregar jugador
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-5 flex flex-wrap justify-center gap-3">
-            <button id="startBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-              Iniciar Americano
-            </button>
-            <button id="nextAvailBtn" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">
-              Generar partidos (disponibles)
-            </button>
-            <button id="nextRoundBtn" class="hidden bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded">
-              Siguiente ronda (global)
-            </button>
-            <button id="resetBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
-              Borrar jornada
-            </button>
-            <button id="exitBtn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">
-              Salir
-            </button>
+  <main id="app" class="hidden max-w-5xl mx-auto px-4 py-6">
+    <!-- Barra de control -->
+    <div class="bg-white shadow rounded-lg p-4 mb-6">
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+        <div>
+          <label class="block text-sm font-medium mb-1">Puntos por partido</label>
+          <select id="pointsSel" class="w-full border rounded px-3 py-2">
+            <option>3</option>
+            <option>4</option>
+            <option>6</option>
+            <option>7</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Canchas</label>
+          <select id="courtsSel" class="w-full border rounded px-3 py-2">
+            <option>1</option>
+            <option>2</option>
+            <option>3</option>
+            <option>4</option>
+          </select>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium mb-1">Nombre del jugador (máx. 8 por cancha)</label>
+          <div class="flex gap-2">
+            <input id="playerInput" type="text" class="flex-1 border rounded px-3 py-2"
+                   placeholder="Ej. Roberto Cabral" />
+            <button id="addPlayerBtn"
+              class="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700">Agregar jugador</button>
           </div>
         </div>
       </div>
 
-      <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4" id="playersList"></div>
-      <div class="mt-8" id="matchesArea"></div>
-      <div class="mt-8" id="standingsArea"></div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button id="startBtn"
+          class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">Iniciar Americano</button>
+        <button id="genAvailBtn"
+          class="px-4 py-2 rounded bg-amber-600 text-white hover:bg-amber-700">Generar partidos (libres)</button>
+        <button id="nextRoundBtn"
+          class="px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 hidden">Siguiente ronda</button>
+        <button id="clearBtn"
+          class="px-4 py-2 rounded bg-rose-600 text-white hover:bg-rose-700">Borrar jornada</button>
+        <button id="exitBtn"
+          class="px-4 py-2 rounded bg-slate-600 text-white hover:bg-slate-700">Salir</button>
+      </div>
     </div>
-  </section>
 
-  <footer class="mt-auto py-6">
-    <div class="max-w-5xl mx-auto px-4 text-center text-sm text-gray-500">
-      Desarrollado por <span class="font-semibold">Roberto Cabral</span>
-    </div>
+    <!-- Lista de jugadores -->
+    <section class="bg-white shadow rounded-lg p-4 mb-6">
+      <h3 class="font-semibold mb-3">Jugadores (máx. 8 por cancha):</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2" id="playersArea"></div>
+    </section>
+
+    <!-- Partidos -->
+    <section class="bg-white shadow rounded-lg p-4 mb-6">
+      <h3 class="font-semibold mb-3">Partidos actuales:</h3>
+      <div id="matchesArea" class="space-y-3"></div>
+      <div id="restLine" class="text-sm text-slate-600 mt-3"></div>
+    </section>
+
+    <!-- Tabla de posiciones -->
+    <section class="bg-white shadow rounded-lg p-4">
+      <h3 class="font-semibold mb-3">Tabla de posiciones</h3>
+      <div id="standingsArea" class="overflow-x-auto"></div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="py-8 text-center text-sm text-slate-500">
+    Desarrollado por Roberto Cabral
   </footer>
 
   <script src="./script.js"></script>
