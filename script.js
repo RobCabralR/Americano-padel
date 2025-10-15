@@ -5,14 +5,13 @@ const STORAGE_KEY  = "padel.americano.state.v8";
  * Pega aquí TU firebaseConfig (instrucciones abajo, sección “Cómo pegar firebaseConfig”).
  */
 const firebaseConfig = {
-  // Ejemplo de forma/llaves. Debes pegar las tuyas:
-  // apiKey: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  // authDomain: "padel-zac.firebaseapp.com",
-  // databaseURL: "https://padel-zac-default-rtdb.firebaseio.com",
-  // projectId: "padel-zac",
-  // storageBucket: "padel-zac.appspot.com",
-  // messagingSenderId: "1234567890",
-  // appId: "1:1234567890:web:abcdef123456"
+  apiKey: "AIzaSyDm0J5dnEavIi0ow8o9q86Zl515E1zqIY0",
+  authDomain: "padel-zac.firebaseapp.com",
+  databaseURL: "https://padel-zac-default-rtdb.firebaseio.com",
+  projectId: "padel-zac",
+  storageBucket: "padel-zac.firebasestorage.app",
+  messagingSenderId: "873811901531",
+  appId: "1:873811901531:web:3175ad146974213728d37e"
 };
 let db = null;
 
