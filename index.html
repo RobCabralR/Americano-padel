@@ -6,9 +6,9 @@
   <title>Americano Padel</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
-<body>
-  <!-- Pantalla de acceso -->
-  <section id="landing">
+<body class="locked">
+  <!-- Pantalla de acceso (cubre toda la ventana) -->
+  <section id="landing" class="landing">
     <div class="card">
       <h1>Americano Padel</h1>
       <p class="muted">Para continuar, ingresa la contraseña.</p>
@@ -17,7 +17,7 @@
   </section>
 
   <!-- App -->
-  <section id="app" class="hidden">
+  <section id="app" class="app hidden" aria-hidden="true">
     <header class="topbar">
       <div class="left">
         <h2>Gestión de Jornada</h2>
@@ -25,33 +25,40 @@
       <div class="right">
         <label>Canchas:
           <select id="courtsSelect">
-            <option>1</option>
-            <option>2</option>
-            <option>3</option>
-            <option>4</option>
-            <option>5</option>
-            <option>6</option>
+            <option>1</option><option>2</option><option>3</option>
+            <option>4</option><option>5</option><option>6</option>
+          </select>
+        </label>
+        <label style="margin-left:10px">Meta (juegos):
+          <select id="targetSelect">
+            <option>3</option><option>5</option><option selected>6</option>
+            <option>7</option><option>9</option>
           </select>
         </label>
         <span class="sep"></span>
         <strong>Ronda: <span id="roundLabel">1</span></strong>
-        <button id="nextRoundBtn" class="ghost">Siguiente ronda</button>
       </div>
     </header>
 
-    <main class="grid">
-      <!-- Jugadores -->
-      <section class="panel">
+    <main class="grid3">
+      <!-- Columna 1: Jugadores -->
+      <section class="panel area-left">
         <h3>Jugadores</h3>
         <div class="row">
           <input id="playerName" placeholder="Nombre del jugador" />
           <button id="addPlayerBtn" class="primary">Agregar</button>
         </div>
+        <p class="muted small" id="assignHint" style="display:none">
+          Con 2+ canchas: asigna cada jugador a una cancha.
+        </p>
         <ul id="playersList" class="list"></ul>
+        <div class="row" style="margin-top:12px">
+          <button id="resetBtn" class="danger ghost">Reiniciar todo</button>
+        </div>
       </section>
 
-      <!-- Partidos -->
-      <section class="panel">
+      <!-- Columna 2: Partidos -->
+      <section class="panel area-center">
         <div class="panel-header">
           <h3>Partidos (ronda <span id="roundLabel2">1</span>)</h3>
           <button id="generateBtn" class="primary">Generar partidos</button>
@@ -59,22 +66,16 @@
         <div id="matchesList" class="matches"></div>
       </section>
 
-      <!-- Tabla -->
-      <section class="panel">
+      <!-- Columna 3: Tabla -->
+      <section class="panel area-right">
         <div class="panel-header">
           <h3>Tabla de posiciones</h3>
-          <button id="resetBtn" class="danger ghost">Reiniciar todo</button>
         </div>
         <table id="table">
           <thead>
             <tr>
-              <th>#</th>
-              <th>Jugador</th>
-              <th>Pts (games)</th>
-              <th>JG</th>
-              <th>JP</th>
-              <th>Partidos</th>
-              <th>Últ. ronda</th>
+              <th>#</th><th>Jugador</th><th>Pts (games)</th>
+              <th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
