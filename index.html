@@ -4,13 +4,22 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Americano Padel</title>
-  <link rel="stylesheet" href="./style.css?v=4" />
+  <link rel="stylesheet" href="./style.css?v=5" />
+  <!-- Firebase (CDN) -->
+  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
   <section id="app" class="app">
     <header class="topbar">
-      <div class="left"><h2>Gestión de Jornada</h2></div>
-      <div class="right">
+      <div class="left">
+        <h2>Gestión de Jornada</h2>
+      </div>
+      <div class="right" style="display:flex;gap:10px;align-items:center;">
+        <div id="roomBadge" class="badge" title="Comparte este ID para que otros anoten resultados">
+          Sala: <strong id="roomIdTxt">—</strong>
+          <button id="copyRoomBtn" class="ghost" style="margin-left:6px;">Copiar</button>
+        </div>
         <label>Canchas:
           <select id="courtsSelect">
             <option>1</option><option>2</option><option>3</option>
@@ -19,7 +28,7 @@
         </label>
         <label style="margin-left:10px">Meta (juegos):
           <select id="targetSelect">
-            <option>3</option><option>5</option><option selected>6</option>
+            <option selected>3</option><option>5</option><option>6</option>
             <option>7</option><option>9</option>
           </select>
         </label>
@@ -70,6 +79,6 @@
     </main>
   </section>
 
-  <script src="./script.js?v=4" defer></script>
+  <script src="./script.js?v=5" defer></script>
 </body>
 </html>
