@@ -141,4 +141,252 @@ function choosePairs(players4, court){
   for(const [[a,b],[c,d]] of options){
     let score = 0;
     score += (state.playedWith[a]?.has(b)?10:0) + (state.playedWith[c]?.has(d)?10:0);
-    score += (state.playedAgainst[a]?.
+    score += (state.playedAgainst[a]?.has(c)?2:0) + (state.playedAgainst[a]?.has(d)?2:0);
+    score += (state.playedAgainst[b]?.has(c)?2:0) + (state.playedAgainst[b]?.has(d)?2:0);
+    // evita pareja repetida en la jornada por cancha
+    const k1=pairKey(a,b), k2=pairKey(c,d);
+    if(usedPairs.has(k1)) score+=50;
+    if(usedPairs.has(k2)) score+=50;
+    if(score<bestScore){ bestScore=score; best=[[a,b],[c,d]]; }
+  }
+  // registra las parejas elegidas para esta cancha
+  const k1=pairKey(best[0][0],best[0][1]), k2=pairKey(best[1][0],best[1][1]);
+  if(!state.pairHistory[court]) state.pairHistory[court]=new Set();
+  state.pairHistory[court].add(k1); state.pairHistory[court].add(k2);
+  return best;
+}
+
+function generateMatchesForCurrentRound(){
+  if(!requireSession()) return;
+  // no generes si todas las canchas ya tienen un "open" en esta ronda
+  const open = state.matches.filter(m=>m.round===state.round && m.status==='open');
+  const freeCourts = Math.max(0, state.courts - open.length);
+  if(freeCourts===0) return;
+
+  const available = availablePlayers();
+  const byCourt = buildCourtBuckets();
+
+  const made=[];
+  const used=new Set();
+
+  for(let court=1; court<=state.courts; court++){
+    if(open.some(m=>m.court===court) || made.some(m=>m.court===court)) continue;
+
+    // candidatos: asignados a esa cancha, disponibles y no usados en esta generación
+    const candidates = byCourt[court].filter(p=>available.includes(p) && !used.has(p));
+    if(candidates.length<4) continue;
+
+    // elige 4 priorizando quienes han descansado más
+    candidates.sort((a,b)=>(state.lastPlayedRound[a]??-1)-(state.lastPlayedRound[b]??-1));
+    const chosen = candidates.slice(0,4);
+    chosen.forEach(p=>used.add(p));
+
+    chosen.forEach(ensurePlayerInit);
+    const pairs = choosePairs(chosen, String(court));
+
+    // marca relaciones jugadas
+    const [a1,a2]=pairs[0], [b1,b2]=pairs[1];
+    state.playedWith[a1].add(a2); state.playedWith[a2].add(a1);
+    state.playedWith[b1].add(b2); state.playedWith[b2].add(b1);
+    [a1,a2].forEach(p=>{ state.playedAgainst[p].add(b1); state.playedAgainst[p].add(b2); });
+    [b1,b2].forEach(p=>{ state.playedAgainst[p].add(a1); state.playedAgainst[p].add(a2); });
+
+    made.push({ id:crypto.randomUUID(), round:state.round, court, pairs, status:"open", scoreA:0, scoreB:0 });
+  }
+
+  state.matches.push(...made);
+  persist(); renderMatches();
+}
+
+function validateScore(a,b){
+  const T = Number(state.target||6);
+  if(!Number.isInteger(a) || !Number.isInteger(b)) return "Marcador inválido.";
+  if(a<0 || b<0) return "No se aceptan negativos.";
+  if(a===b) return "No puede haber empate.";
+  // Regla: gana quien llega EXACTAMENTE a la meta
+  if(a!==T && b!==T) return `Uno de los equipos debe llegar a ${T}.`;
+  if(a===T && b>=T) return "El perdedor no puede alcanzar la meta.";
+  if(b===T && a>=T) return "El perdedor no puede alcanzar la meta.";
+  return null;
+}
+
+function saveResult(matchId, sA, sB){
+  if(!requireSession()) return;
+  const m = state.matches.find(x=>x.id===matchId);
+  if(!m || m.status!=="open") return;
+  const a = Number(sA), b = Number(sB);
+  const err = validateScore(a,b);
+  if(err) return alert(err);
+
+  m.status="done"; m.scoreA=a; m.scoreB=b;
+
+  const [t1,t2] = m.pairs;
+  const winner = (a>b)? t1 : t2;
+  const loser  = (a>b)? t2 : t1;
+
+  function applyTeam(team, gamesWon, gamesLost){
+    for(const p of team){
+      ensurePlayerInit(p);
+      state.standings[p].pts += gamesWon;
+      state.standings[p].played += 1;
+      state.standings[p].lastRound = state.round;
+      state.lastPlayedRound[p] = state.round;
+    }
+  }
+  applyTeam(t1, a, b);
+  applyTeam(t2, b, a);
+  winner.forEach(p=>state.standings[p].wins+=1);
+  loser.forEach(p=>state.standings[p].losses+=1);
+
+  persist();
+  renderAll();
+
+  // ===== Avanza ronda automáticamente y genera siguientes partidos =====
+  state.round += 1;
+  persist();
+  renderAll();
+  generateMatchesForCurrentRound();
+}
+
+// ===== Renders =====
+function renderPlayers(){
+  playersList.innerHTML="";
+  assignHint.style.display = state.courts>1 ? "block":"none";
+  for(const p of state.players){
+    const li=document.createElement("li");
+    li.className="badge";
+    const courtSel = state.courts>1 ? `
+      <select class="pcourt" data-name="${p}" title="Cancha">
+        ${Array.from({length:state.courts},(_,i)=>`<option value="${i+1}" ${ (state.playerCourts[p]||1)===(i+1)?'selected':''}>${i+1}</option>`).join("")}
+      </select>` : "";
+    li.innerHTML = `<div style="display:flex;gap:8px;align-items:center;">
+        <strong>${p}</strong>${courtSel}
+      </div>
+      <span class="x" title="Eliminar">✕</span>`;
+    li.querySelector(".x").addEventListener("click",()=>removePlayer(p));
+    if(state.courts>1){
+      li.querySelector(".pcourt").addEventListener("change",(e)=>{
+        state.playerCourts[p]=Number(e.target.value); persist();
+      });
+    }
+    playersList.appendChild(li);
+  }
+}
+
+function renderMatches(){
+  matchesList.innerHTML="";
+  const matches = state.matches.filter(m=>m.round===state.round).sort((a,b)=>a.court-b.court);
+  if(matches.length===0){
+    const hint=document.createElement("div");
+    hint.className="muted"; hint.textContent="No hay partidos generados para esta ronda.";
+    matchesList.appendChild(hint); return;
+  }
+  for(const m of matches){
+    const el=document.createElement("div");
+    el.className="match";
+    const [t1,t2]=m.pairs;
+    el.innerHTML=`
+      <div class="meta">Cancha ${m.court} · ${m.status==="open"?"En juego":"Terminado"}</div>
+      <div class="teams">
+        <div class="team">${t1.map(n=>`<span class="badge">${n}</span>`).join(" ")}</div>
+        <div class="vs">VS</div>
+        <div class="team">${t2.map(n=>`<span class="badge">${n}</span>`).join(" ")}</div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div class="score">
+          <label>Marcador (a ${state.target}):</label>
+          <input type="number" min="0" value="${m.scoreA}" ${m.status==="done"?"disabled":""} class="sA"/>
+          <span>-</span>
+          <input type="number" min="0" value="${m.scoreB}" ${m.status==="done"?"disabled":""} class="sB"/>
+        </div>
+        <div style="flex:1"></div>
+        ${m.status==="open"
+          ? `<button class="primary save">Guardar resultado y pasar a la siguiente ronda</button>`
+          : `<span class="badge" style="border-color:#345">Final: ${m.scoreA} - ${m.scoreB}</span>`
+        }
+      </div>`;
+    if(m.status==="open"){
+      el.querySelector(".save").addEventListener("click",()=>{
+        const sA=el.querySelector(".sA").value; const sB=el.querySelector(".sB").value;
+        saveResult(m.id, sA, sB);
+      });
+    }
+    matchesList.appendChild(el);
+  }
+}
+
+function renderTable(){
+  const rows = Object.entries(state.standings)
+    .map(([name,data])=>({name,...data}))
+    .sort((a,b)=> b.pts - a.pts || b.wins - a.wins || a.losses - b.losses || a.name.localeCompare(b.name));
+  tbody.innerHTML="";
+  rows.forEach((r,idx)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td class="rank">${idx+1}</td>
+      <td>${r.name}</td><td>${r.pts}</td><td>${r.wins}</td>
+      <td>${r.losses}</td><td>${r.played}</td><td>${r.lastRound||0}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderAll(){
+  roundLabel.textContent=String(state.round);
+  roundLabel2.textContent=String(state.round);
+  courtsSelect.value=String(state.courts);
+  targetSelect.value=String(state.target);
+  renderPlayers(); renderMatches(); renderTable();
+}
+
+// ===== Eventos =====
+enterBtn.addEventListener("click", ()=>{
+  const p = prompt("Ingresa la contraseña:");
+  if(p===PASSWORD){
+    sessionStorage.setItem(SESSION_KEY,"1");
+    openApp();
+    boot();
+  }else{
+    alert("Contraseña incorrecta.");
+  }
+});
+
+courtsSelect.addEventListener("change", ()=>{
+  if(!requireSession()) return;
+  state.courts = Number(courtsSelect.value);
+  // limpia pairHistory (cambió la estructura de canchas)
+  state.pairHistory = {};
+  // normaliza asignación
+  for(const p of state.players){ state.playerCourts[p]=Math.min(Math.max(1,state.playerCourts[p]||1), state.courts); }
+  persist(); renderAll();
+});
+
+targetSelect.addEventListener("change", ()=>{
+  if(!requireSession()) return;
+  state.target = Number(targetSelect.value);
+  persist(); renderAll();
+});
+
+addPlayerBtn.addEventListener("click", ()=>{ addPlayer(playerName.value); playerName.value=""; playerName.focus(); });
+playerName.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ addPlayer(playerName.value); playerName.value=""; } });
+
+generateBtn.addEventListener("click", ()=>{ generateMatchesForCurrentRound(); });
+
+resetBtn.addEventListener("click", ()=>{
+  if(!requireSession()) return;
+  if(!confirm("¿Seguro que deseas reiniciar todo?")) return;
+  localStorage.removeItem(STORAGE_KEY);
+  Object.assign(state, {
+    players:[], playerCourts:{}, courts:1, target:6, round:1, matches:[],
+    standings:{}, playedWith:{}, playedAgainst:{}, pairHistory:{}, lastPlayedRound:{}
+  });
+  persist(); renderAll();
+});
+
+// ===== Inicio =====
+function boot(){
+  load();
+  state.players.forEach(ensurePlayerInit);
+  renderAll();
+}
+
+// Si ya hay sesión válida, abre; si no, bloquea
+if(sessionStorage.getItem(SESSION_KEY)==="1"){ openApp(); boot(); } else { closeApp(); }
