@@ -1,19 +1,18 @@
 /************** CONFIG **************/
-const STORAGE_KEY  = "padel.americano.state.v6";
+const STORAGE_KEY  = "padel.americano.state.v7";
 
 /* ===== Firebase =====
- * 1) En Firebase console → Configuración del proyecto → tus apps → "SDK de Firebase para la web".
- * 2) Copia tu 'firebaseConfig' y pégalo aquí.
- *    Sin esto, NO habrá live entre dispositivos (Sala = "—").
+ * Conecta para tener “Sala” y sincronizar entre dispositivos.
+ * Pega aquí TU firebaseConfig (lo explico abajo).
  */
 const firebaseConfig = {
-  // apiKey: "...",
-  // authDomain: "...",
-  // databaseURL: "https://<tu-db>.firebaseio.com",
-  // projectId: "...",
-  // storageBucket: "...",
-  // messagingSenderId: "...",
-  // appId: "..."
+  // apiKey: "TU_API_KEY",
+  // authDomain: "TU_AUTH_DOMAIN",
+  // databaseURL: "https://padel-zac-default-rtdb.firebaseio.com", // <- según tu proyecto
+  // projectId: "TU_PROJECT_ID",
+  // storageBucket: "TU_BUCKET",
+  // messagingSenderId: "TU_SENDER_ID",
+  // appId: "TU_APP_ID"
 };
 let db = null;
 
@@ -96,7 +95,7 @@ function loadLocal(){
 /************** FIREBASE SYNC **************/
 function initFirebase(){
   if(!firebaseConfig || !firebaseConfig.apiKey){ roomIdTxt.textContent="—"; return; }
-  const app = firebase.initializeApp(firebaseConfig);
+  firebase.initializeApp(firebaseConfig);
   db = firebase.database();
 
   let rid = (location.hash || "").replace("#","").trim();
@@ -147,9 +146,7 @@ function subscribeCloud(){
 }
 
 /************** HELPERS **************/
-const isGhost = (name)=> typeof name==="string" && /^comodin-\d+$/.test(name);
 function ensurePlayerInit(name){
-  if(isGhost(name)) return; // ghost no lleva stats
   if(!state.standings[name]) state.standings[name]={pts:0,wins:0,losses:0,played:0,lastRound:0};
   if(!state.playedWith[name]) state.playedWith[name]=new Set();
   if(!state.playedAgainst[name]) state.playedAgainst[name]=new Set();
@@ -161,6 +158,7 @@ const pairKey=(a,b)=>[a,b].sort().join("|");
 const fixtureKey=(a,b,c,d)=>[pairKey(a,b), pairKey(c,d)].sort().join("_vs_");
 const canEditSetup = ()=> !state.locked && state.phase==="groups";
 
+/************** JUGADORES **************/
 function addPlayer(name){
   if(!canEditSetup()) return alert("No se puede agregar: el americano ya inició.");
   const n=(name||"").trim();
@@ -188,24 +186,24 @@ function buildCourtBuckets(){
   }
   return buckets;
 }
-function ensureGhosts(){
-  // si en una cancha hay # impar y >=6, asegura comodin-<cancha>
+
+/* === Comodín visible y con puntos ===
+   Si en una cancha (# reales) es impar y >=6 → crea 'comodin-<cancha>' si no existe.
+   El comodín queda fijo (no se elimina automáticamente).
+*/
+function ensureGhostsVisible(){
   const buckets = buildCourtBuckets();
   for(let c=1;c<=state.courts;c++){
     const court = String(c);
-    const name = `comodin-${court}`;
-    const count = (buckets[c]||[]).filter(p=>!isGhost(p)).length;
-    const hasGhost = state.players.includes(name);
-    if(count>=6 && count%2===1){
+    const ghost = `comodin-${court}`;
+    const realCount = (buckets[c]||[]).filter(p=>!p.startsWith("comodin-")).length;
+    const hasGhost = state.players.includes(ghost);
+    if(realCount>=6 && realCount%2===1){
       if(!hasGhost){
-        state.players.push(name);
-        state.playerCourts[name]=c;
+        state.players.push(ghost);
+        ensurePlayerInit(ghost);
+        state.playerCourts[ghost]=c;
       }
-    }else if(hasGhost){
-      // si deja de ser necesario, lo quitamos (y limpiamos partidos abiertos que lo tengan)
-      state.players = state.players.filter(p=>p!==name);
-      delete state.playerCourts[name];
-      state.matches = state.matches.filter(m=> m.status==="done" || !m.pairs.flat().includes(name));
     }
   }
 }
@@ -219,36 +217,28 @@ function availablePlayersByCourt(court){
 
 /************** GENERACIÓN (GRUPOS) **************/
 function chooseFourForCourt(court){
-  ensureGhosts();
+  ensureGhostsVisible();
   const assigned = buildCourtBuckets()[court];
   const avail = availablePlayersByCourt(court);
-  const realAvail = avail.length;
+  if(assigned.length < 4) return null;
 
-  // Si hay comodín en la cancha, puede entrar en el 4
-  const scoredPool = Array.from(new Set([...(assigned||[])]))
-    .filter(Boolean)
-    .map(p=>{
-      const playedHere = (state.playedOnCourt[p]?.[court]||0);
-      const last = state.lastPlayedRound[p] ?? -1;
-      const ghostBias = isGhost(p) ? 1000 : 0; // el comodín entra solo si hace falta
-      return {p, score: playedHere*10 + (last) + ghostBias};
-    })
-    .sort((a,b)=>a.score-b.score)
-    .map(x=>x.p);
+  // prioriza menos jugados en esa cancha y más descanso
+  const scored = assigned.map(p=>{
+    const playedHere = (state.playedOnCourt[p]?.[court]||0);
+    const last = state.lastPlayedRound[p] ?? -1;
+    // al comodín no lo priorizamos especialmente: es un jugador más
+    return {p, score: playedHere*10 + (last)};
+  }).sort((a,b)=>a.score-b.score).map(x=>x.p);
 
-  // escoger 4 que NO estén ocupados
+  // tomar 4 que estén libres; si faltan, completar con los siguientes
   const four = [];
-  for(const p of scoredPool){
+  for(const p of scored){
     if(four.length===4) break;
-    if(!avail.includes(p)) continue;
-    four.push(p);
+    if(avail.includes(p)) four.push(p);
   }
-  if(four.length<4){
-    // completa con otros de la cancha (incluyendo comodín) si no había suficientes "avail"
-    for(const p of scoredPool){
-      if(four.length===4) break;
-      if(!four.includes(p)) four.push(p);
-    }
+  for(const p of scored){
+    if(four.length===4) break;
+    if(!four.includes(p)) four.push(p);
   }
   return four.length===4 ? four : null;
 }
@@ -274,13 +264,11 @@ function choosePairsForCourt(players4, court){
     if(usedPairs.has(pk1)) score += 200;
     if(usedPairs.has(pk2)) score += 200;
 
-    // evitar repetir compañero/rival (solo jugadores reales)
-    const real = (x)=>!isGhost(x);
-    if(real(a)&&real(b) && state.playedWith[a]?.has(b)) score += 20;
-    if(real(c)&&real(d) && state.playedWith[c]?.has(d)) score += 20;
-
+    // evitar repetir compañero/rivales
+    if(state.playedWith[a]?.has(b)) score += 20;
+    if(state.playedWith[c]?.has(d)) score += 20;
     [ [a,c],[a,d],[b,c],[b,d] ].forEach(([x,y])=>{
-      if(real(x)&&real(y) && state.playedAgainst[x]?.has(y)) score += 5;
+      if(state.playedAgainst[x]?.has(y)) score += 5;
     });
 
     if(score<bestScore){ bestScore=score; best=[[a,b],[c,d]]; }
@@ -301,7 +289,7 @@ function markCourtCompleteIfStuck(court){
 
 function generateMatchesForGroups(){
   state.locked = true;
-  ensureGhosts();
+  ensureGhostsVisible();
 
   for(let c=1;c<=state.courts;c++){
     const court = String(c);
@@ -350,7 +338,6 @@ function validateScore(a,b){
 
 function applyTeam(team, gamesWon, gamesLost, courtKey){
   for(const p of team){
-    if(isGhost(p)) continue; // comodín no suma
     ensurePlayerInit(p);
     state.standings[p].pts += gamesWon;
     state.standings[p].played += 1;
@@ -378,17 +365,16 @@ function saveResult(matchId, sA, sB){
   applyTeam(t1, a, b, courtKey);
   applyTeam(t2, b, a, courtKey);
 
-  // wins/losses solo para reales
-  winner.forEach(p=>{ if(!isGhost(p)) state.standings[p].wins+=1; });
-  loser.forEach(p=>{ if(!isGhost(p)) state.standings[p].losses+=1; });
+  winner.forEach(p=>state.standings[p].wins+=1);
+  loser.forEach(p=>state.standings[p].losses+=1);
 
-  // registrar parejas & fixture jugados (ignorando intercambio con comodín en historial de “con/contra”)
-  const addPair = (x,y)=>{ if(isGhost(x)||isGhost(y)) return; if(!state.pairHistory[courtKey]) state.pairHistory[courtKey]=new Set(); state.pairHistory[courtKey].add(pairKey(x,y)); };
+  // registrar parejas & fixture jugados
+  const addPair = (x,y)=>{ if(!state.pairHistory[courtKey]) state.pairHistory[courtKey]=new Set(); state.pairHistory[courtKey].add(pairKey(x,y)); };
   addPair(t1[0], t1[1]); addPair(t2[0], t2[1]);
   if(!state.fixtureHistory[courtKey]) state.fixtureHistory[courtKey]=new Set();
   state.fixtureHistory[courtKey].add(fixtureKey(t1[0],t1[1],t2[0],t2[1]));
-  [t1[0],t1[1]].forEach(p=>{ if(!isGhost(p)){ t2.forEach(q=>{ if(!isGhost(q)){ state.playedAgainst[p].add(q); } }); state.playedWith[p].add(p===t1[0]?t1[1]:t1[0]); }});
-  [t2[0],t2[1]].forEach(p=>{ if(!isGhost(p)){ t1.forEach(q=>{ if(!isGhost(q)){ state.playedAgainst[p].add(q); } }); state.playedWith[p].add(p===t2[0]?t2[1]:t2[0]); }});
+  [t1[0],t1[1]].forEach(p=>{ state.playedAgainst[p].add(t2[0]); state.playedAgainst[p].add(t2[1]); state.playedWith[p].add(p===t1[0]?t1[1]:t1[0]); });
+  [t2[0],t2[1]].forEach(p=>{ state.playedAgainst[p].add(t1[0]); state.playedAgainst[p].add(t1[1]); state.playedWith[p].add(p===t2[0]?t2[1]:t2[0]); });
 
   // avanza ronda de esa cancha
   state.courtRound[courtKey] = (state.courtRound[courtKey]||1) + 1;
@@ -410,12 +396,11 @@ function saveResult(matchId, sA, sB){
 const nearestPow2 = (n)=>{ const p=[2,4,8,16,32]; for(let i=p.length-1;i>=0;i--){ if(p[i]<=n) return p[i]; } return 2; };
 
 function pickBracketPlayers(){
-  // ranking por cancha
   const buckets = buildCourtBuckets();
   const perCourtPicks = [];
   for(let c=1;c<=state.courts;c++){
     const court = String(c);
-    const players = (buckets[c]||[]).filter(p=>!isGhost(p));
+    const players = (buckets[c]||[]);
     const rows = players.map(name=>({name, ...state.standings[name], court:c}))
       .sort((a,b)=> b.pts - a.pts || b.wins - a.wins || a.losses - b.losses || a.name.localeCompare(b.name));
     let take = 0;
@@ -426,10 +411,8 @@ function pickBracketPlayers(){
   }
   if(perCourtPicks.length < 4) return [];
 
-  // recorta a potencia de 2 usando ranking global
   const pow2 = nearestPow2(perCourtPicks.length);
   const all = Object.keys(state.standings)
-    .filter(p=>!isGhost(p))
     .map(name=>({name, ...state.standings[name]}))
     .sort((a,b)=> b.pts - a.pts || b.wins - a.wins || a.losses - b.losses || a.name.localeCompare(b.name));
   const selectedSet = new Set(perCourtPicks);
@@ -437,23 +420,27 @@ function pickBracketPlayers(){
 }
 
 function createBracket(){
-  if(state.phase!=="groups") return;       // <-- evita duplicados
+  if(state.phase!=="groups") return; // evita duplicados
+
   const players = pickBracketPlayers();
   if(players.length < 4){ alert("No hay suficientes jugadores para eliminatoria."); return; }
 
+  // ***** Limpia TODO lo de grupos (incluidos terminados) *****
+  state.matches = [];
+
   state.phase = "bracket";
-  // limpiar abiertos de grupos
-  state.matches = state.matches.filter(m=>m.status==="done");
+  state.locked = true;
 
-  // si hubiera botón aún, lo quitamos
-  const btn = $("#advanceBracketBtn"); if(btn) btn.remove();
+  const btn = document.getElementById("advanceBracketBtn");
+  if(btn) btn.remove();
 
-  // seeds: 1 vs último, 2 vs penúltimo, etc. → luego se juntan de 2 en 2 para “dobles”
+  // Siembra: 1 vs último, 2 vs penúltimo...
   const seeds = [...players];
   const pairs1v1 = [];
   for(let i=0;i<seeds.length/2;i++){
     pairs1v1.push([seeds[i], seeds[seeds.length-1-i]]);
   }
+  // Dobles: emparejamos cada 2 duelos 1v1 en un partido
   const matches = [];
   for(let i=0;i<pairs1v1.length;i+=2){
     const t1 = [pairs1v1[i][0], pairs1v1[i][1]];
@@ -468,11 +455,12 @@ function createBracket(){
       scoreB: 0
     });
   }
-  state.courtRound = {}; state.courtComplete = {};
+  state.courtRound = {};
+  state.courtComplete = {};
   state.round = 1;
-  state.locked = true; // mantiene bloqueos
-  pushCloud();
-  renderAll();
+
+  state.matches.push(...matches);
+  pushCloud(); renderAll();
 }
 
 /************** RENDER **************/
@@ -486,7 +474,6 @@ function renderPlayers(){
   targetSelect.disabled = !canEditSetup();
 
   for(const p of state.players){
-    if(isGhost(p)) continue; // no listamos el comodín
     const li=document.createElement("li");
     li.className="badge";
     const courtSel = state.courts>1 ? `
@@ -554,7 +541,7 @@ function renderMatches(){
     const el=document.createElement("div");
     el.className="match";
     const [t1,t2]=m.pairs;
-    const teamHtml = (team)=>team.map(n=>`<span class="badge">${isGhost(n) ? "comodín" : n}</span>`).join(" ");
+    const teamHtml = (team)=>team.map(n=>`<span class="badge">${n}</span>`).join(" ");
     el.innerHTML=`
       <div class="meta">${state.phase==="groups" ? `Cancha ${m.court}` : `Eliminatoria`} · ${m.status==="open"?"En juego":"Terminado"}</div>
       <div class="teams">
@@ -566,7 +553,7 @@ function renderMatches(){
         <div class="score">
           <label>Marcador (a ${state.target}):</label>
           <input type="number" min="0" value="${m.scoreA}" ${m.status==="done"?"disabled":""} class="sA"/>
-          <span>-</span>
+        <span>-</span>
           <input type="number" min="0" value="${m.scoreB}" ${m.status==="done"?"disabled":""} class="sB"/>
         </div>
         <div style="flex:1"></div>
@@ -609,6 +596,9 @@ function renderAll(){
   targetSelect.value=String(state.target);
   roomIdTxt.textContent = state.roomId || "—";
 
+  // Oculta “Generar partidos” en eliminatoria
+  generateBtn.style.display = (state.phase === "bracket") ? "none" : "inline-block";
+
   renderPlayers();
   renderMatches();
   renderTable();
@@ -644,8 +634,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
     state.pairHistory = {}; state.fixtureHistory = {};
     state.courtRound = {}; state.courtComplete = {};
     for(let c=1;c<=state.courts;c++){ state.courtRound[String(c)]=1; state.courtComplete[String(c)]=false; }
-    for(const p of state.players){ if(!isGhost(p)) state.playerCourts[p]=Math.min(Math.max(1,state.playerCourts[p]||1), state.courts); }
-    ensureGhosts();
+    for(const p of state.players){ state.playerCourts[p]=Math.min(Math.max(1,state.playerCourts[p]||1), state.courts); }
+    ensureGhostsVisible();
     pushCloud(); renderAll();
   });
 
