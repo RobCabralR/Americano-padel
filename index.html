@@ -4,10 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Americano Padel</title>
-  <link rel="stylesheet" href="./style.css" />
+  <!-- cache-busting para evitar versión vieja en GH Pages -->
+  <link rel="stylesheet" href="./style.css?v=3" />
 </head>
 <body class="locked">
-  <!-- Pantalla de acceso (cubre toda la ventana) -->
+  <!-- Pantalla de acceso -->
   <section id="landing" class="landing">
     <div class="card">
       <h1>Americano Padel</h1>
@@ -16,7 +17,7 @@
         <input id="pwd" type="password" placeholder="Contraseña" autocomplete="current-password" />
         <button id="loginBtn" class="primary">Acceder</button>
       </div>
-      <p class="muted small">Tip: si cambiaste la clave, edítala en <code>script.js</code> (const <b>PASSWORD</b>).</p>
+      <div id="loginError" class="muted small" style="color:#ff9aa5; min-height:1.2em;"></div>
     </div>
   </section>
 
@@ -84,6 +85,7 @@
     </main>
   </section>
 
-  <script type="module" src="./script.js"></script>
+  <!-- usar defer para compatibilidad amplia (no ES modules) -->
+  <script src="./script.js?v=3" defer></script>
 </body>
 </html>
