@@ -1,222 +1,186 @@
-/* Padel-Americano Zacatecas – v1.6 */
-/* Persistencia local (GitHub Pages) – sin Firebase */
-
-const LSK = 'americanoZac_v16';
+// ====== Estado y persistencia ======
+const STORAGE_KEY = 'padelZac_v15';
 
 const state = {
-  started: false,
   pointsToWin: 3,
   courts: 1,
-  round: 0,
-  players: [],
-  // partidos de la ronda actual
-  matches: [],       // [{court, pairs:[[a,b],[c,d]], status:'open'|'done', result:{s1,s2}}]
-  results: [],
-
-  // standings por jugador
-  standings: {},     // name -> {PJ,PG,PP,JF,JC,Dif,Pts}
-
-  // historia para no repetir parejas/rivales y rotar justo
-  partnerHistory: {},      // "a|b" => true
-  opponentHistory: {},     // "a&b|c&d" ordenadas => true
-  lastPlayedRound: {},     // jugador -> última ronda que jugó
+  players: [],            // string[]
+  round: 0,               // ronda actual
+  matches: [],            // {id, round, court, pairs:[[a,b],[c,d]], status:'open'|'done', result?:{s1,s2}}
+  standings: {},          // nombre -> {PJ,PG,PP,JF,JC,Diff,Pts}
+  lastPlayedRound: {},    // nombre -> última ronda en que jugó (para repartir descansos)
+  playedWith: {},         // nombre -> Set de compañeros con los que ya jugó
+  playedAgainst: {},      // nombre -> Set de oponentes (para evitar repeticiones)
+  busy: new Set(),        // jugadores ocupados en esta generación
 };
 
-function persist(){ localStorage.setItem(LSK, JSON.stringify(state)); }
+// ====== DOM ======
+const landing = document.getElementById('landing');
+const app = document.getElementById('app');
+const enterBtn = document.getElementById('enterBtn');
+
+const roundBadge = document.getElementById('roundBadge');
+const pointsSelect = document.getElementById('pointsSelect');
+const courtsSelect = document.getElementById('courtsSelect');
+const newPlayer = document.getElementById('newPlayer');
+const addPlayerBtn = document.getElementById('addPlayer');
+const startBtn = document.getElementById('startBtn');
+const genAvailBtn = document.getElementById('genAvailBtn');
+const nextRoundBtn = document.getElementById('nextRoundBtn');
+const clearBtn = document.getElementById('clearBtn');
+const exitBtn = document.getElementById('exitBtn');
+
+const playerList = document.getElementById('playerList');
+const matchesArea = document.getElementById('matchesArea');
+const restLine = document.getElementById('restLine');
+const standingsBody = document.getElementById('standingsBody');
+
+// ====== Password simple ======
+const PASSWORD = 'Padel2025';
+enterBtn.addEventListener('click', () => {
+  const p = prompt('Ingresa la contraseña:');
+  if (p === PASSWORD) {
+    landing.classList.add('hidden');
+    app.classList.remove('hidden');
+    load();        // carga estado si existía
+    renderAll();
+  } else {
+    alert('Contraseña incorrecta.');
+  }
+});
+
+// ====== Util ======
+function persist(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
 function load(){
-  const raw = localStorage.getItem(LSK);
+  const raw = localStorage.getItem(STORAGE_KEY);
   if(!raw) return;
   try{
     const s = JSON.parse(raw);
     Object.assign(state, s);
+    // Set a objeto Set
+    state.busy = new Set();
   }catch(e){}
 }
 
-// ---------- helpers UI ----------
-const $ = sel => document.querySelector(sel);
-const landing = $('#landing');
-const app = $('#app');
-
-const enterBtn = $('#enterBtn');
-const pointsSel = $('#pointsSel');
-const courtsSel = $('#courtsSel');
-const playerInput = $('#playerInput');
-const addPlayerBtn = $('#addPlayerBtn');
-const startBtn = $('#startBtn');
-const clearBtn = $('#clearBtn');
-const exitBtn = $('#exitBtn');
-const matchesArea = $('#matchesArea');
-const playersArea = $('#playersArea');
-const standingsArea = $('#standingsArea');
-const roundBadge = $('#roundBadge');
-const genAvailBtn = $('#genAvailBtn');
-const nextRoundBtn = $('#nextRoundBtn');
-const restLine = $('#restLine');
-
-enterBtn.addEventListener('click', ()=>{
-  landing.classList.add('hidden');
-  app.classList.remove('hidden');
+// limpia todo
+function resetAll(){
+  state.pointsToWin = Number(pointsSelect.value) || 3;
+  state.courts = Number(courtsSelect.value) || 1;
+  state.players = [];
+  state.round = 0;
+  state.matches = [];
+  state.standings = {};
+  state.lastPlayedRound = {};
+  state.playedWith = {};
+  state.playedAgainst = {};
+  state.busy = new Set();
+  persist();
   renderAll();
-});
+}
 
-pointsSel.addEventListener('change', ()=>{
-  state.pointsToWin = parseInt(pointsSel.value,10);
-  persist(); renderMatches();
-});
-courtsSel.addEventListener('change', ()=>{
-  state.courts = parseInt(courtsSel.value,10);
-  // al cambiar canchas en medio de ronda: sólo afecta a cuántos partidos abrimos
-  persist(); renderMatches();
-});
-
-addPlayerBtn.addEventListener('click', ()=>{
-  const name = playerInput.value.trim();
-  if(!name) return;
-  const maxAllowed = state.courts * 8;
-  if(state.players.length >= maxAllowed){
-    alert(`Máximo ${maxAllowed} jugadores (8 por cancha).`);
-    return;
-  }
-  if(state.players.includes(name)){
-    alert('Ese nombre ya existe.'); return;
-  }
-  state.players.push(name);
-  ensureStatsFor(name);
-  playerInput.value = '';
-  persist(); renderPlayers(); renderStandings();
-});
-
-startBtn.addEventListener('click', startTournament);
-clearBtn.addEventListener('click', clearTournament);
-exitBtn.addEventListener('click', ()=>{
-  app.classList.add('hidden'); landing.classList.remove('hidden');
-});
-genAvailBtn.addEventListener('click', generateFromAvailable);
-nextRoundBtn.addEventListener('click', nextRoundGlobal);
-
-// ---------- standings ----------
-function ensureStatsFor(name){
-  if(!state.standings[name]){
-    state.standings[name] = { PJ:0, PG:0, PP:0, JF:0, JC:0, Dif:0, Pts:0 };
+function ensureStanding(p){
+  if(!state.standings[p]){
+    state.standings[p] = {PJ:0,PG:0,PP:0,JF:0,JC:0,Diff:0,Pts:0};
   }
 }
-function applyMatchToStandings(pA, pB, s1, s2){
-  const winA = s1 > s2;
-  const A = pA, B = pB;
-  // pareja 1
-  A.forEach(n=>{
-    ensureStatsFor(n);
-    state.standings[n].PJ += 1;
-    if(winA) state.standings[n].PG += 1; else state.standings[n].PP += 1;
-    state.standings[n].JF += s1; state.standings[n].JC += s2;
-    state.standings[n].Dif = state.standings[n].JF - state.standings[n].JC;
-    state.standings[n].Pts += (winA ? 2 : 0);
+function touchPlayer(p){
+  ensureStanding(p);
+  if(!state.playedWith[p]) state.playedWith[p] = new Set();
+  if(!state.playedAgainst[p]) state.playedAgainst[p] = new Set();
+  if(state.lastPlayedRound[p]===undefined) state.lastPlayedRound[p] = -1;
+}
+
+function shuffle(arr){
+  const a = [...arr];
+  for(let i=a.length-1; i>0; i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+// jugadores disponibles ordenados por “menos han jugado recientemente”
+function availablePlayers(){
+  const busy = currentBusyPlayers();
+  return state.players
+    .filter(p=>!busy.has(p))
+    .sort((a,b)=>(state.lastPlayedRound[a]??-1)-(state.lastPlayedRound[b]??-1));
+}
+function currentBusyPlayers(){
+  const busy = new Set();
+  state.matches.filter(m=>m.round===state.round && m.status==='open').forEach(m=>{
+    m.pairs.flat().forEach(p=>busy.add(p));
   });
-  // pareja 2
-  B.forEach(n=>{
-    ensureStatsFor(n);
-    state.standings[n].PJ += 1;
-    if(!winA) state.standings[n].PG += 1; else state.standings[n].PP += 1;
-    state.standings[n].JF += s2; state.standings[n].JC += s1;
-    state.standings[n].Dif = state.standings[n].JF - state.standings[n].JC;
-    state.standings[n].Pts += (!winA ? 2 : 0);
+  return busy;
+}
+
+// ====== Render ======
+function renderAll(){
+  // selects
+  pointsSelect.value = state.pointsToWin;
+  courtsSelect.value = state.courts;
+
+  roundBadge.textContent = `Ronda ${state.round}`;
+
+  renderPlayers();
+  renderMatches();
+  renderStandings();
+}
+
+// Jugadores (con eliminar)
+function renderPlayers(){
+  playerList.innerHTML = '';
+  const twoCols = state.players.map((name,idx)=>{
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2';
+    row.innerHTML = `
+      <span class="text-slate-500 w-6">${idx+1}.</span>
+      <input class="border rounded px-2 py-1 flex-1" value="${name}" disabled />
+      <button data-del="${name}" class="text-rose-600 text-sm hover:underline">quitar</button>
+    `;
+    playerList.appendChild(row);
+  });
+
+  playerList.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const name = btn.getAttribute('data-del');
+      state.players = state.players.filter(p=>p!==name);
+      delete state.standings[name];
+      delete state.playedWith[name];
+      delete state.playedAgainst[name];
+      delete state.lastPlayedRound[name];
+      persist();
+      renderAll();
+    });
   });
 }
 
 function renderStandings(){
-  standingsArea.innerHTML = '';
-  const entries = Object.entries(state.standings);
-  if(!entries.length){
-    standingsArea.innerHTML = '<div class="text-sm text-slate-500">Sin datos aún.</div>';
-    return;
-  }
-  const rows = entries
-    .map(([name,st])=>({name,...st}))
-    .sort((a,b)=> b.Pts - a.Pts || b.Dif - a.Dif || b.JF - a.JF || a.name.localeCompare(b.name));
+  const rows = Object.entries(state.standings)
+    .map(([name,s])=>({name,...s}))
+    .sort((a,b)=> b.Pts - a.Pts || b.Diff - a.Diff || a.name.localeCompare(b.name));
 
-  const table = document.createElement('table');
-  table.className = 'min-w-[680px] w-full text-sm';
-  table.innerHTML = `
-    <thead>
-      <tr class="bg-slate-100 text-slate-700">
-        <th class="text-left px-2 py-2">#</th>
-        <th class="text-left px-2 py-2">Jugador</th>
-        <th class="px-2 py-2">PJ</th>
-        <th class="px-2 py-2">PG</th>
-        <th class="px-2 py-2">PP</th>
-        <th class="px-2 py-2">JF</th>
-        <th class="px-2 py-2">JC</th>
-        <th class="px-2 py-2">Dif</th>
-        <th class="px-2 py-2">Pts</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  `;
-  rows.forEach((r,i)=>{
-    const tr = document.createElement('tr');
-    tr.className = i%2 ? 'bg-white' : 'bg-slate-50';
-    tr.innerHTML = `
-      <td class="px-2 py-1">${i+1}</td>
-      <td class="px-2 py-1">${r.name}</td>
-      <td class="text-center px-2 py-1">${r.PJ}</td>
-      <td class="text-center px-2 py-1">${r.PG}</td>
-      <td class="text-center px-2 py-1">${r.PP}</td>
-      <td class="text-center px-2 py-1">${r.JF}</td>
-      <td class="text-center px-2 py-1">${r.JC}</td>
-      <td class="text-center px-2 py-1">${r.Dif}</td>
-      <td class="text-center px-2 py-1 font-semibold">${r.Pts}</td>
-    `;
-    table.querySelector('tbody').appendChild(tr);
-  });
-  standingsArea.appendChild(table);
-
-  const legend = document.createElement('div');
-  legend.className = 'text-xs text-slate-500 mt-2';
-  legend.textContent = 'PJ: Partidos jugados · PG: Ganados · PP: Perdidos · JF: Juegos a favor · JC: Juegos en contra · Dif: Diferencia (JF−JC) · Pts: 2 por victoria';
-  standingsArea.appendChild(legend);
+  standingsBody.innerHTML = rows.map((r,i)=>`
+    <tr class="border-b">
+      <td class="py-1 px-2">${i+1}</td>
+      <td class="py-1 px-2">${r.name}</td>
+      <td class="py-1 px-2">${r.PJ}</td>
+      <td class="py-1 px-2">${r.PG}</td>
+      <td class="py-1 px-2">${r.PP}</td>
+      <td class="py-1 px-2">${r.JF}</td>
+      <td class="py-1 px-2">${r.JC}</td>
+      <td class="py-1 px-2">${r.Diff}</td>
+      <td class="py-1 px-2">${r.Pts}</td>
+    </tr>
+  `).join('');
 }
 
-// ---------- players ----------
-function renderPlayers(){
-  playersArea.innerHTML = '';
-  if(!state.players.length){
-    playersArea.innerHTML = '<div class="text-sm text-slate-500">Sin jugadores.</div>';
-    return;
-  }
-  const half = Math.ceil(state.players.length/2);
-  const cols = [state.players.slice(0,half), state.players.slice(half)];
-
-  cols.forEach(col=>{
-    const cdiv = document.createElement('div');
-    cdiv.className = 'space-y-2';
-    col.forEach((name, idx)=>{
-      const ix = state.players.indexOf(name)+1;
-      const row = document.createElement('div');
-      row.className = 'flex items-center gap-2';
-      row.innerHTML = `
-        <div class="w-6 text-slate-500">${ix}.</div>
-        <input class="flex-1 border rounded px-3 py-2" value="${name}" disabled />
-        <button class="text-rose-600 text-sm underline">quitar</button>
-      `;
-      row.querySelector('button').addEventListener('click', ()=>removePlayer(name));
-      cdiv.appendChild(row);
-    });
-    playersArea.appendChild(cdiv);
-  });
-}
-
-function removePlayer(name){
-  if(state.started) return alert('No puedes eliminar jugadores con el Americano en curso.');
-  state.players = state.players.filter(p=>p!==name);
-  delete state.standings[name];
-  delete state.lastPlayedRound[name];
-  persist(); renderPlayers(); renderStandings();
-}
-
-// ---------- matches ----------
+// Partidos
 function renderMatches(){
   matchesArea.innerHTML = '';
-  roundBadge.textContent = `Ronda ${state.round || 0}`;
+  roundBadge.textContent = `Ronda ${state.round}`;
 
   const open = state.matches.filter(m=>m.status==='open');
   if(!open.length){
@@ -225,30 +189,56 @@ function renderMatches(){
     open.forEach(m=>{
       const [a1,a2] = m.pairs[0];
       const [b1,b2] = m.pairs[1];
+
       const card = document.createElement('div');
       card.className = 'border rounded p-3 flex flex-wrap items-center gap-2';
+
       card.innerHTML = `
         <div class="w-full sm:w-auto font-medium">Cancha ${m.court}:</div>
         <div class="flex-1">${a1} & ${a2} <span class="px-2 text-amber-600">vs</span> ${b1} & ${b2}</div>
-        <label class="text-sm">Juegos pareja 1: <input type="number" min="0" class="w-16 border rounded px-2 py-1 ml-1" /></label>
-        <label class="text-sm">Juegos pareja 2: <input type="number" min="0" class="w-16 border rounded px-2 py-1 ml-1" /></label>
-        <button class="px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700">Registrar</button>
-        <span class="text-sm hidden text-emerald-600">✔ Registrado</span>
+
+        <label class="text-sm">
+          Juegos pareja 1:
+          <input data-s1 type="number" min="0" class="w-16 border rounded px-2 py-1 ml-1" />
+        </label>
+
+        <label class="text-sm">
+          Juegos pareja 2:
+          <input data-s2 type="number" min="0" class="w-16 border rounded px-2 py-1 ml-1" />
+        </label>
+
+        <button data-reg class="px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700">
+          Registrar
+        </button>
+
+        <span data-ok class="text-sm hidden text-emerald-600">✔ Registrado</span>
       `;
-      const [i1,i2,btn,ok] = card.querySelectorAll('input,button,span');
+
+      const i1 = card.querySelector('[data-s1]');
+      const i2 = card.querySelector('[data-s2]');
+      const btn = card.querySelector('[data-reg]');
+      const ok  = card.querySelector('[data-ok]');
+
       btn.addEventListener('click', ()=>{
-        const s1 = parseInt(i1.value,10);
-        const s2 = parseInt(i2.value,10);
-        if(Number.isNaN(s1)||Number.isNaN(s2)){ alert('Ingresa marcadores.'); return; }
+        const s1 = Number(i1.value);
+        const s2 = Number(i2.value);
+
+        if (!Number.isFinite(s1) || !Number.isFinite(s2)) {
+          alert('Ingresa marcadores.'); return;
+        }
+
         const W = state.pointsToWin;
-        const valid = (
-          (s1===W && s2>=0 && s2<W) ||
-          (s2===W && s1>=0 && s1<W)
-        );
-        if(!valid){ alert(`Marcador inválido. Se juega a ${W}. Ej: ${W}-${W-1} ó ${W-1}-${W}`); return; }
+        const valid =
+          (s1 === W && s2 >= 0 && s2 < W) ||
+          (s2 === W && s1 >= 0 && s1 < W);
+
+        if(!valid){
+          alert(`Marcador inválido. Se juega a ${W}. Ej: ${W}-${W-1} ó ${W-1}-${W}`);
+          return;
+        }
         if(m.status==='done'){ alert('Este partido ya fue registrado.'); return; }
 
-        // aplicar
+        // aplicar resultado
         applyMatchToStandings([a1,a2],[b1,b2],s1,s2);
         [a1,a2,b1,b2].forEach(p=>{ state.lastPlayedRound[p] = state.round; });
         m.status='done'; m.result={s1,s2};
@@ -256,17 +246,16 @@ function renderMatches(){
 
         btn.classList.add('hidden'); ok.classList.remove('hidden');
 
-        // ¿ya terminó la ronda?
         const allDone = state.matches.every(x=>x.status==='done');
         if(allDone){
           nextRoundBtn.classList.remove('hidden');
           genAvailBtn.classList.add('hidden');
         }else{
-          // aún hay huecos abiertos -> mantener botones
           nextRoundBtn.classList.add('hidden');
           genAvailBtn.classList.remove('hidden');
         }
       });
+
       matchesArea.appendChild(card);
     });
   }
@@ -277,213 +266,199 @@ function renderMatches(){
   restLine.textContent = rest.length ? ('Descansan: ' + rest.join(', ')) : '';
 }
 
-function currentBusyPlayers(){
-  const set = new Set();
-  state.matches.filter(m=>m.status==='open').forEach(m=>{
-    m.pairs.flat().forEach(p=>set.add(p));
+// ====== Lógica de torneo ======
+function applyMatchToStandings(pair1, pair2, s1, s2){
+  const all = [...pair1, ...pair2];
+  all.forEach(ensureStanding);
+
+  const win1 = s1 > s2;
+  pair1.forEach(p=>{
+    state.standings[p].PJ += 1;
+    state.standings[p].JF += s1;
+    state.standings[p].JC += s2;
+    state.standings[p].Diff = state.standings[p].JF - state.standings[p].JC;
+    if(win1){ state.standings[p].PG += 1; state.standings[p].Pts += 2; }
+    else    { state.standings[p].PP += 1; }
   });
-  return set;
+  pair2.forEach(p=>{
+    state.standings[p].PJ += 1;
+    state.standings[p].JF += s2;
+    state.standings[p].JC += s1;
+    state.standings[p].Diff = state.standings[p].JF - state.standings[p].JC;
+    if(!win1){ state.standings[p].PG += 1; state.standings[p].Pts += 2; }
+    else     { state.standings[p].PP += 1; }
+  });
 }
 
-// ---------- generator ----------
-function pairKey(a,b){ return [a,b].sort().join('|'); }
-function matchKey(a1,a2,b1,b2){
-  const A=[a1,a2].sort().join('&');
-  const B=[b1,b2].sort().join('&');
-  return [A,B].sort().join('|');
-}
-function getPJ(name){ return (state.standings[name]?.PJ)||0; }
+// Generar emparejamientos para la ronda actual (hasta canchas disponibles)
+function generateMatchesForCurrentRound(){
+  const open = state.matches.filter(m=>m.round===state.round && m.status==='open');
+  const freeCourts = Math.max(0, state.courts - open.length);
+  if(freeCourts===0) return;
 
-// generador justo por ronda: llena hasta “capacity” partidos sin repetir parejas/rivales
-function generateRoundFair(availablePlayers, capacity) {
-  if (capacity <= 0) return { matches: [], rest: availablePlayers.slice() };
+  const avail = availablePlayers(); // no ocupados
+  const capacity = Math.floor(avail.length / 4);
+  const setsToMake = Math.min(freeCourts, capacity);
 
-  const round = state.round || 1;
-  const scored = availablePlayers.map(p=>{
-    const pj = getPJ(p);
-    const last = state.lastPlayedRound[p] ?? 0;
-    const idle = round - last; // mayor = más tiempo sin jugar
-    return { p, pj, idle };
-  }).sort((a,b)=> a.pj - b.pj || b.idle - a.idle);
-
-  const pool = scored.map(x=>x.p);
+  const made = [];
   const used = new Set();
-  const matches = [];
 
-  function canPair(x,y){ return !state.partnerHistory[pairKey(x,y)]; }
-  function canOppose(a1,a2,b1,b2){ return !state.opponentHistory[matchKey(a1,a2,b1,b2)]; }
+  const candidates = [...avail];
 
-  for(let m=0; m<capacity; m++){
-    const cand = pool.filter(p=>!used.has(p));
-    if (cand.length < 4) break;
-
-    let chosen = null;
-    outer:
-    for (let i=0;i<cand.length;i++){
-      for (let j=i+1;j<cand.length;j++){
-        if(!canPair(cand[i], cand[j])) continue;
-        for (let k=0;k<cand.length;k++){
-          if(k===i||k===j) continue;
-          for (let l=k+1;l<cand.length;l++){
-            if(l===i||l===j) continue;
-            if(!canPair(cand[k], cand[l])) continue;
-            if(!canOppose(cand[i],cand[j],cand[k],cand[l])) continue;
-            chosen = [cand[i],cand[j],cand[k],cand[l]];
-            break outer;
-          }
-        }
-      }
-    }
-    if(!chosen){
-      outer2:
-      for (let i=0;i<cand.length;i++){
-        for (let j=i+1;j<cand.length;j++){
-          if(!canPair(cand[i], cand[j])) continue;
-          for (let k=0;k<cand.length;k++){
-            if(k===i||k===j) continue;
-            for (let l=k+1;l<cand.length;l++){
-              if(l===i||l===j) continue;
-              if(!canPair(cand[k], cand[l])) continue;
-              chosen = [cand[i],cand[j],cand[k],cand[l]];
-              break outer2;
-            }
-          }
-        }
-      }
-    }
+  for(let c=0;c<setsToMake;c++){
+    // elegir 4 jugadores que no se repitan mucho
+    let chosen = pickFour(candidates, used);
     if(!chosen) break;
+    chosen.forEach(p=>used.add(p));
+    // parejas intentando no repetir compañero y rivales
+    const pairs = makePairs(chosen);
 
-    chosen.forEach(u=>used.add(u));
-    matches.push({ pairs:[[chosen[0],chosen[1]],[chosen[2],chosen[3]]], status:'open' });
-  }
+    // asignar cancha libre
+    const courtsInUse = new Set(open.map(m=>m.court).concat(made.map(m=>m.court)));
+    let court=1; while(courtsInUse.has(court)) court++;
 
-  const rest = pool.filter(p=>!used.has(p));
-  return { matches, rest };
-}
-
-// abre partidos hasta llenar la capacidad de canchas de la ronda
-function openMatchesToCapacity(){
-  const already = state.matches.length;
-  const canOpen = Math.max(0, state.courts - already);
-  if (canOpen <= 0) return;
-
-  const busy = currentBusyPlayers();
-  const free = state.players.filter(p=>!busy.has(p));
-
-  const {matches} = generateRoundFair(free, canOpen);
-  let nextCourt = already + 1;
-  matches.forEach(m=>{
-    const [a1,a2]=m.pairs[0], [b1,b2]=m.pairs[1];
-    state.matches.push({
-      court: nextCourt++,
-      pairs:[[a1,a2],[b1,b2]],
-      status:'open',
-      result:null
+    made.push({
+      id: crypto.randomUUID(),
+      round: state.round,
+      court,
+      pairs,
+      status:'open'
     });
-    state.partnerHistory[pairKey(a1,a2)] = true;
-    state.partnerHistory[pairKey(b1,b2)] = true;
-    state.opponentHistory[matchKey(a1,a2,b1,b2)] = true;
-  });
+
+    // marcar “ya jugaron juntos / contra” para evitar repetir
+    const [a1,a2] = pairs[0], [b1,b2]=pairs[1];
+    // compañeros
+    state.playedWith[a1].add(a2); state.playedWith[a2].add(a1);
+    state.playedWith[b1].add(b2); state.playedWith[b2].add(b1);
+    // rivales
+    [a1,a2].forEach(p=>{
+      state.playedAgainst[p].add(b1); state.playedAgainst[p].add(b2);
+    });
+    [b1,b2].forEach(p=>{
+      state.playedAgainst[p].add(a1); state.playedAgainst[p].add(a2);
+    });
+  }
+
+  state.matches.push(...made);
   persist();
-}
-
-// permitir abrir partidos “libres” dentro de la ronda (hasta completar canchas)
-function generateFromAvailable(){
-  if(!state.started){ alert('Primero inicia el Americano.'); return; }
-  const open = state.matches.filter(m=>m.status==='open').length;
-  if(open >= state.courts){
-    alert('La ronda ya tiene el máximo de partidos abiertos.'); return;
-  }
-  openMatchesToCapacity();
   renderMatches();
 }
 
-// ---------- ciclo ----------
-function startTournament(){
-  if(state.started){
-    alert('El Americano ya está iniciado. Usa “Borrar jornada” para reiniciar.');
-    return;
+// elige 4 no usados priorizando los de menor “lastPlayedRound”
+function pickFour(candidates, used){
+  const pool = candidates.filter(p=>!used.has(p));
+  if(pool.length<4) return null;
+  pool.sort((a,b)=>(state.lastPlayedRound[a]??-1)-(state.lastPlayedRound[b]??-1));
+  const four = [];
+  for(let p of pool){
+    if(four.length<4){ four.push(p); }
+    if(four.length===4) break;
   }
-  if(state.players.length<4){ alert('Necesitas al menos 4 jugadores.'); return; }
-  // standings sólo con jugadores actuales
-  state.standings = {};
-  state.players.forEach(ensureStatsFor);
+  return four.length===4 ? four : null;
+}
 
-  state.partnerHistory = {};
-  state.opponentHistory = {};
-  state.lastPlayedRound = {};
+// crea parejas tratando de no repetir compañero ni rivales
+function makePairs(four){
+  const [A,B,C,D] = four;
+  const prefer = (x,y)=> (state.playedWith[x]?.has(y) ? 1 : 0);
+  // probamos dos combinaciones: (A,B)-(C,D) y (A,C)-(B,D); elegimos la que menos repite
+  const score1 = prefer(A,B)+prefer(C,D);
+  const score2 = prefer(A,C)+prefer(B,D);
 
-  state.pointsToWin = parseInt(pointsSel.value,10);
-  state.courts = parseInt(courtsSel.value,10);
+  if(score1<score2) return [[A,B],[C,D]];
+  if(score2<score1) return [[A,C],[B,D]];
 
-  state.started = true;
+  // empate: elegir la que menos rivales repetidos
+  const rScore1 =
+    (state.playedAgainst[A]?.has(C)?1:0)+(state.playedAgainst[A]?.has(D)?1:0)+
+    (state.playedAgainst[B]?.has(C)?1:0)+(state.playedAgainst[B]?.has(D)?1:0);
+
+  const rScore2 =
+    (state.playedAgainst[A]?.has(B)?1:0)+(state.playedAgainst[A]?.has(D)?1:0)+
+    (state.playedAgainst[C]?.has(B)?1:0)+(state.playedAgainst[C]?.has(D)?1:0);
+
+  if(rScore1<rScore2) return [[A,B],[C,D]];
+  if(rScore2<rScore1) return [[A,C],[B,D]];
+
+  // igual: al azar
+  return Math.random()<0.5 ? [[A,B],[C,D]] : [[A,C],[B,D]];
+}
+
+// ====== Eventos UI ======
+pointsSelect.addEventListener('change', ()=>{
+  state.pointsToWin = Number(pointsSelect.value)||3;
+  persist();
+});
+courtsSelect.addEventListener('change', ()=>{
+  state.courts = Number(courtsSelect.value)||1;
+  persist(); renderMatches();
+});
+
+addPlayerBtn.addEventListener('click', ()=>{
+  const name = newPlayer.value.trim();
+  if(!name) return;
+  if(state.players.includes(name)) return alert('Ese jugador ya está registrado.');
+  // tope: 8 por cancha
+  const max = state.courts*8;
+  if(state.players.length>=max) return alert(`Límite de ${max} jugadores para ${state.courts} cancha(s).`);
+  state.players.push(name);
+  touchPlayer(name);
+  newPlayer.value='';
+  persist(); renderPlayers(); renderStandings();
+});
+
+startBtn.addEventListener('click', ()=>{
+  if(state.players.length<4) return alert('Agrega al menos 4 jugadores.');
+  if(state.round>0){
+    // ya empezó: no permitir reiniciar sin borrar
+    return alert('El Americano ya inició. Usa "Borrar jornada" para reiniciar.');
+  }
   state.round = 1;
-  state.matches = []; state.results = [];
-
-  startBtn.disabled = true;
+  // inicializar estructuras
+  state.players.forEach(touchPlayer);
+  // primera generación completa (canchas disponibles)
+  generateMatchesForCurrentRound();
+  // UI
   startBtn.classList.add('opacity-50','cursor-not-allowed');
-
-  openMatchesToCapacity();
+  startBtn.disabled = true;
   persist(); renderAll();
-}
+});
 
-function nextRoundGlobal(){
-  if(!state.matches.length || !state.matches.every(m=>m.status==='done')){
-    alert('Aún hay partidos abiertos en esta ronda.'); return;
-  }
+genAvailBtn.addEventListener('click', ()=>{
+  // genera más partidos para esta misma ronda si hay canchas libres
+  const open = state.matches.filter(m=>m.round===state.round && m.status==='open');
+  if(open.length>=state.courts) return alert('No hay canchas libres.');
+  generateMatchesForCurrentRound();
+});
+
+nextRoundBtn.addEventListener('click', ()=>{
+  // sólo si no hay abiertos
+  const open = state.matches.filter(m=>m.round===state.round && m.status==='open');
+  if(open.length) return alert('Aún hay partidos sin registrar en esta ronda.');
   state.round += 1;
-  state.matches = []; state.results = [];
-  openMatchesToCapacity();
+  // crear los primeros partidos de la ronda nueva
+  generateMatchesForCurrentRound();
   nextRoundBtn.classList.add('hidden');
-  genAvailBtn.classList.remove('hidden');
   persist(); renderAll();
-}
+});
 
-function clearTournament(){
+clearBtn.addEventListener('click', ()=>{
   if(!confirm('¿Deseas borrar la jornada anterior y comenzar un nuevo Americano Zacatecas?')) return;
-  Object.assign(state, {
-    started:false,
-    pointsToWin: parseInt(pointsSel.value,10) || 3,
-    courts: parseInt(courtsSel.value,10) || 1,
-    round:0,
-    players: [],
-    matches: [],
-    results: [],
-    standings: {},
-    partnerHistory:{},
-    opponentHistory:{},
-    lastPlayedRound:{}
-  });
-  startBtn.disabled = false;
+  resetAll();
+  // reactivar botón iniciar
   startBtn.classList.remove('opacity-50','cursor-not-allowed');
-  persist(); renderAll();
-}
+  startBtn.disabled = false;
+});
 
-// ---------- render root ----------
-function renderAll(){
-  // controles
-  pointsSel.value = String(state.pointsToWin || 3);
-  courtsSel.value = String(state.courts || 1);
-  roundBadge.textContent = `Ronda ${state.round || 0}`;
+exitBtn.addEventListener('click', ()=>{
+  app.classList.add('hidden'); landing.classList.remove('hidden');
+});
 
-  // botones
-  if(state.started){
-    startBtn.disabled = true;
-    startBtn.classList.add('opacity-50','cursor-not-allowed');
-  }else{
-    startBtn.disabled = false;
-    startBtn.classList.remove('opacity-50','cursor-not-allowed');
+// ====== Inicio rápido si ya había sesión guardada (opcional)
+// (si no quieres autoinicio, elimina este bloque)
+(() => {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(raw){
+    // mostramos landing, pero si ingresas contraseña, cargará esa sesión
   }
-  // next vs gen
-  const allDone = state.matches.length && state.matches.every(x=>x.status==='done');
-  if(allDone){ nextRoundBtn.classList.remove('hidden'); genAvailBtn.classList.add('hidden'); }
-  else { nextRoundBtn.classList.add('hidden'); genAvailBtn.classList.remove('hidden'); }
-
-  renderPlayers();
-  renderMatches();
-  renderStandings();
-}
-
-// init
-load();
-renderAll();
+})();
