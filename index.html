@@ -12,16 +12,18 @@
     <div class="card">
       <h1>Americano Padel</h1>
       <p class="muted">Para continuar, ingresa la contraseña.</p>
-      <button id="enterBtn" class="primary">Entrar</button>
+      <div class="row">
+        <input id="pwd" type="password" placeholder="Contraseña" autocomplete="current-password" />
+        <button id="loginBtn" class="primary">Acceder</button>
+      </div>
+      <p class="muted small">Tip: si cambiaste la clave, edítala en <code>script.js</code> (const <b>PASSWORD</b>).</p>
     </div>
   </section>
 
   <!-- App -->
   <section id="app" class="app hidden" aria-hidden="true">
     <header class="topbar">
-      <div class="left">
-        <h2>Gestión de Jornada</h2>
-      </div>
+      <div class="left"><h2>Gestión de Jornada</h2></div>
       <div class="right">
         <label>Canchas:
           <select id="courtsSelect">
@@ -68,9 +70,7 @@
 
       <!-- Columna 3: Tabla -->
       <section class="panel area-right">
-        <div class="panel-header">
-          <h3>Tabla de posiciones</h3>
-        </div>
+        <div class="panel-header"><h3>Tabla de posiciones</h3></div>
         <table id="table">
           <thead>
             <tr>
