@@ -1,27 +1,23 @@
 /************** CONFIG **************/
-const PASSWORD     = "Padel2025";
-const STORAGE_KEY  = "padel.americano.state.v2";
-const SESSION_KEY  = "padel.session.ok";
+const STORAGE_KEY  = "padel.americano.state.v3";
 
 /************** ESTADO **************/
 const state = {
   players: [],
-  playerCourts: {},      // { nombre: cancha }
+  playerCourts: {},      // { nombre: cancha } (si courts>1)
   courts: 1,
-  target: 6,
+  target: 6,             // meta de juegos para ganar
   round: 1,
-  matches: [],           // {id, round, court, pairs, status, scoreA, scoreB}
+  matches: [],           // {id, round, court, pairs, status:'open'|'done', scoreA, scoreB}
   standings: {},         // { jugador: {pts,wins,losses,played,lastRound} }
-  playedWith: {},        // { jugador: Set() }
-  playedAgainst: {},     // { jugador: Set() }
-  pairHistory: {},       // { "1": Set("A|B",...) }
+  playedWith: {},        // { jugador: Set() }   // sólo partidos YA JUGADOS
+  playedAgainst: {},     // { jugador: Set() }   // sólo partidos YA JUGADOS
+  pairHistory: {},       // { "1": Set("A|B",...) } // parejas ya JUGADAS por cancha
   lastPlayedRound: {},   // { jugador: ronda }
 };
 
 /************** DOM **************/
 const $ = (s)=>document.querySelector(s);
-const app = $("#app"), landing=$("#landing");
-const pwd = $("#pwd"), loginBtn=$("#loginBtn"), loginError=$("#loginError");
 const courtsSelect = $("#courtsSelect");
 const targetSelect = $("#targetSelect");
 const roundLabel = $("#roundLabel"), roundLabel2=$("#roundLabel2");
@@ -60,21 +56,6 @@ function load(){
   }catch(e){ console.warn("No se pudo cargar estado:", e); }
 }
 
-/************** SESIÓN / GATE **************/
-function openApp(){
-  document.body.classList.remove("locked");
-  landing.classList.add("hidden");
-  app.classList.remove("hidden");
-  app.setAttribute("aria-hidden","false");
-}
-function closeApp(){
-  document.body.classList.add("locked");
-  landing.classList.remove("hidden");
-  app.classList.add("hidden");
-  app.setAttribute("aria-hidden","true");
-}
-function hasSession(){ return sessionStorage.getItem(SESSION_KEY)==="1"; }
-
 /************** HELPERS **************/
 function ensurePlayerInit(name){
   if(!state.standings[name]) state.standings[name]={pts:0,wins:0,losses:0,played:0,lastRound:0};
@@ -86,7 +67,6 @@ function ensurePlayerInit(name){
 const pairKey=(a,b)=>[a,b].sort().join("|");
 
 function addPlayer(name){
-  if(!hasSession()) return showLoginError("Primero ingresa la contraseña.");
   const n=(name||"").trim();
   if(!n) return alert("Escribe un nombre.");
   if(state.players.includes(n)) return alert("Ese nombre ya existe.");
@@ -95,7 +75,6 @@ function addPlayer(name){
   persist(); renderAll();
 }
 function removePlayer(name){
-  if(!hasSession()) return showLoginError("Primero ingresa la contraseña.");
   state.players = state.players.filter(p=>p!==name);
   delete state.standings[name];
   delete state.playedWith[name]; delete state.playedAgainst[name];
@@ -119,6 +98,11 @@ function buildCourtBuckets(){
   }
   return buckets;
 }
+
+/** puntuación del emparejamiento:
+ * - muy penalizado repetir pareja ya JUGADA (pairHistory por cancha)
+ * - penaliza también repetir compañero u oponente de partidos JUGADOS
+ */
 function choosePairs(players4, court){
   const [p1,p2,p3,p4] = players4;
   const options = [
@@ -128,21 +112,27 @@ function choosePairs(players4, court){
   const usedPairs = state.pairHistory[court]||new Set();
   for(const [[a,b],[c,d]] of options){
     let score = 0;
-    score += (state.playedWith[a]?.has(b)?10:0) + (state.playedWith[c]?.has(d)?10:0);
-    score += (state.playedAgainst[a]?.has(c)?2:0) + (state.playedAgainst[a]?.has(d)?2:0);
-    score += (state.playedAgainst[b]?.has(c)?2:0) + (state.playedAgainst[b]?.has(d)?2:0);
+    // evitar parejas ya JUGADAS en esta cancha
     const k1=pairKey(a,b), k2=pairKey(c,d);
-    if(usedPairs.has(k1)) score+=50;
-    if(usedPairs.has(k2)) score+=50;
+    if(usedPairs.has(k1)) score+=100;
+    if(usedPairs.has(k2)) score+=100;
+
+    // evitar repetir compañero y rivales (historial JUGADO)
+    score += (state.playedWith[a]?.has(b)?10:0) + (state.playedWith[c]?.has(d)?10:0);
+    [ [a,c],[a,d],[b,c],[b,d] ].forEach(([x,y])=>{
+      if(state.playedAgainst[x]?.has(y)) score += 3;
+    });
+
+    // preferir quienes han descansado más recientemente
+    score += (state.lastPlayedRound[a]??0) + (state.lastPlayedRound[b]??0)
+           + (state.lastPlayedRound[c]??0) + (state.lastPlayedRound[d]??0);
+
     if(score<bestScore){ bestScore=score; best=[[a,b],[c,d]]; }
   }
-  const k1=pairKey(best[0][0],best[0][1]), k2=pairKey(best[1][0],best[1][1]);
-  if(!state.pairHistory[court]) state.pairHistory[court]=new Set();
-  state.pairHistory[court].add(k1); state.pairHistory[court].add(k2);
   return best;
 }
+
 function generateMatchesForCurrentRound(){
-  if(!hasSession()) return showLoginError("Primero ingresa la contraseña.");
   const open = state.matches.filter(m=>m.round===state.round && m.status==='open');
   const freeCourts = Math.max(0, state.courts - open.length);
   if(freeCourts===0) return;
@@ -156,17 +146,17 @@ function generateMatchesForCurrentRound(){
     if(open.some(m=>m.court===court) || made.some(m=>m.court===court)) continue;
     const candidates = byCourt[court].filter(p=>available.includes(p) && !used.has(p));
     if(candidates.length<4) continue;
+
+    // prioriza quien más descansó
     candidates.sort((a,b)=>(state.lastPlayedRound[a]??-1)-(state.lastPlayedRound[b]??-1));
     const chosen = candidates.slice(0,4);
     chosen.forEach(p=>{ used.add(p); ensurePlayerInit(p); });
+
     const pairs = choosePairs(chosen, String(court));
-    const [a1,a2]=pairs[0], [b1,b2]=pairs[1];
-    state.playedWith[a1].add(a2); state.playedWith[a2].add(a1);
-    state.playedWith[b1].add(b2); state.playedWith[b2].add(b1);
-    [a1,a2].forEach(p=>{ state.playedAgainst[p].add(b1); state.playedAgainst[p].add(b2); });
-    [b1,b2].forEach(p=>{ state.playedAgainst[p].add(a1); state.playedAgainst[p].add(a2); });
+
     made.push({ id:crypto.randomUUID(), round:state.round, court, pairs, status:"open", scoreA:0, scoreB:0 });
   }
+
   state.matches.push(...made);
   persist(); renderMatches();
 }
@@ -181,8 +171,8 @@ function validateScore(a,b){
   if(b===T && a>=T) return "El perdedor no puede alcanzar la meta.";
   return null;
 }
+
 function saveResult(matchId, sA, sB){
-  if(!hasSession()) return showLoginError("Primero ingresa la contraseña.");
   const m = state.matches.find(x=>x.id===matchId);
   if(!m || m.status!=="open") return;
   const a = Number(sA), b = Number(sB);
@@ -209,9 +199,22 @@ function saveResult(matchId, sA, sB){
   winner.forEach(p=>state.standings[p].wins+=1);
   loser.forEach(p=>state.standings[p].losses+=1);
 
-  persist(); renderAll();
+  // ACTUALIZA HISTORIAL SOLO CUANDO EL PARTIDO SE JUGÓ
+  const courtKey = String(m.court);
+  if(!state.pairHistory[courtKey]) state.pairHistory[courtKey]=new Set();
+  const addPairPlayed = (x,y)=> state.pairHistory[courtKey].add(pairKey(x,y));
+  addPairPlayed(t1[0], t1[1]); addPairPlayed(t2[0], t2[1]);
 
-  // Avanza ronda y genera siguientes
+  // Jugados con / contra (para evitar repeticiones reales)
+  state.playedWith[t1[0]].add(t1[1]); state.playedWith[t1[1]].add(t1[0]);
+  state.playedWith[t2[0]].add(t2[1]); state.playedWith[t2[1]].add(t2[0]);
+  [t1[0],t1[1]].forEach(p=>{ state.playedAgainst[p].add(t2[0]); state.playedAgainst[p].add(t2[1]); });
+  [t2[0],t2[1]].forEach(p=>{ state.playedAgainst[p].add(t1[0]); state.playedAgainst[p].add(t1[1]); });
+
+  persist();
+  renderAll();
+
+  // Avanza ronda y genera siguientes partidos
   state.round += 1;
   persist(); renderAll();
   generateMatchesForCurrentRound();
@@ -303,50 +306,31 @@ function renderAll(){
   renderPlayers(); renderMatches(); renderTable();
 }
 
-/************** LOGIN + EVENTOS **************/
-function showLoginError(msg){ if(loginError){ loginError.textContent = msg; } }
-function doLogin(){
-  const val = (pwd?.value ?? "").trim();
-  if(val === PASSWORD){
-    sessionStorage.setItem(SESSION_KEY,"1");
-    showLoginError("");
-    openApp();
-    boot();
-  }else{
-    showLoginError("Contraseña incorrecta.");
-    pwd && pwd.select && pwd.select();
-  }
-}
-
+/************** EVENTOS **************/
 document.addEventListener("DOMContentLoaded", ()=>{
-  // si ya hay sesión previa:
-  if(sessionStorage.getItem(SESSION_KEY)==="1"){ openApp(); boot(); }
+  load();
+  state.players.forEach(ensurePlayerInit);
+  renderAll();
 
-  // listeners (si existen en DOM)
-  loginBtn && loginBtn.addEventListener("click", doLogin);
-  pwd && pwd.addEventListener("keydown", (e)=>{ if(e.key==="Enter") doLogin(); });
-
-  courtsSelect && courtsSelect.addEventListener("change", ()=>{
-    if(!hasSession()) return showLoginError("Primero ingresa la contraseña.");
+  courtsSelect.addEventListener("change", ()=>{
     state.courts = Number(courtsSelect.value);
+    // reinicia el historial de parejas si cambia el layout de canchas
     state.pairHistory = {};
     for(const p of state.players){ state.playerCourts[p]=Math.min(Math.max(1,state.playerCourts[p]||1), state.courts); }
     persist(); renderAll();
   });
 
-  targetSelect && targetSelect.addEventListener("change", ()=>{
-    if(!hasSession()) return showLoginError("Primero ingresa la contraseña.");
+  targetSelect.addEventListener("change", ()=>{
     state.target = Number(targetSelect.value);
     persist(); renderAll();
   });
 
-  addPlayerBtn && addPlayerBtn.addEventListener("click", ()=>{ addPlayer(playerName.value); playerName.value=""; playerName.focus(); });
-  playerName && playerName.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ addPlayer(playerName.value); playerName.value=""; } });
+  addPlayerBtn.addEventListener("click", ()=>{ addPlayer(playerName.value); playerName.value=""; playerName.focus(); });
+  playerName.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ addPlayer(playerName.value); playerName.value=""; } });
 
-  generateBtn && generateBtn.addEventListener("click", ()=>{ generateMatchesForCurrentRound(); });
+  generateBtn.addEventListener("click", ()=>{ generateMatchesForCurrentRound(); });
 
-  resetBtn && resetBtn.addEventListener("click", ()=>{
-    if(!hasSession()) return showLoginError("Primero ingresa la contraseña.");
+  resetBtn.addEventListener("click", ()=>{
     if(!confirm("¿Seguro que deseas reiniciar todo?")) return;
     localStorage.removeItem(STORAGE_KEY);
     Object.assign(state, {
@@ -356,10 +340,3 @@ document.addEventListener("DOMContentLoaded", ()=>{
     persist(); renderAll();
   });
 });
-
-/************** INICIO APP **************/
-function boot(){
-  load();
-  state.players.forEach(ensurePlayerInit);
-  renderAll();
-}
