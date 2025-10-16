@@ -1,5 +1,5 @@
 /************** CONFIG **************/
-const STORAGE_KEY  = "padel.americano.state.v12";
+const STORAGE_KEY  = "padel.americano.state.v13";
 
 /* ===== Firebase ===== */
 const firebaseConfig = {
@@ -155,7 +155,7 @@ function buildCourtBuckets(){
 }
 function countOnCourt(c){ return (buildCourtBuckets()[c]||[]).length; }
 
-/* Comodín solo al generar */
+/* Comodín solo cuando se generan partidos */
 function maybeAddGhostOnGenerate(court){
   const buckets = buildCourtBuckets();
   const list = buckets[court] || [];
@@ -219,11 +219,7 @@ function* combinations4(arr){
           yield [arr[i],arr[j],arr[k],arr[l]];
 }
 
-/* === Emparejador estricto ===
-   1) Intento con DOS parejas nuevas (ideal → minimiza rondas).
-   2) Si no hay, acepto una nueva (solo cuando es imposible la opción 1).
-   3) Si tampoco hay, devuelvo null → cancha completa.
-*/
+/* Emparejador estricto (fuerza 2 parejas nuevas cuando exista) */
 function choosePairsForCourt(players4, court){
   const [p1,p2,p3,p4] = players4;
   const options = [
@@ -234,7 +230,6 @@ function choosePairsForCourt(players4, court){
   const usedPairs   = state.pairHistory[court]   || new Set();
   const usedFixture = state.fixtureHistory[court]|| new Set();
 
-  // TIER 1: ambas parejas NUEVAS y fixture nuevo
   for (const [[a,b],[c,d]] of options){
     const pk1 = pairKey(a,b), pk2 = pairKey(c,d);
     const fk  = fixtureKey(a,b,c,d);
@@ -242,7 +237,6 @@ function choosePairsForCourt(players4, court){
       return [[a,b],[c,d]];
     }
   }
-  // TIER 2: al menos una pareja nueva y fixture nuevo
   for (const [[a,b],[c,d]] of options){
     const pk1 = pairKey(a,b), pk2 = pairKey(c,d);
     const fk  = fixtureKey(a,b,c,d);
@@ -276,7 +270,6 @@ function findNextMatchForCourt(court){
   return null;
 }
 
-/* Total de parejas en una cancha y total teórico de partidos */
 const totalPairsOnCourt = (court)=>{
   const n = (buildCourtBuckets()[court]||[]).length;
   return n*(n-1)/2;
@@ -295,7 +288,7 @@ function updateCourtCompletionByPairs(court){
   return false;
 }
 
-/* !!! AHORA permite generar aunque locked sea true (si el setup está listo) */
+/* ARREGLO: no abre partidos si ya está completo; no “infla” la ronda */
 function generateMatchesForGroups(){
   if(!setupOk()) return alert("Primero finaliza el setup (canchas y meta).");
   state.locked = true;
@@ -305,10 +298,12 @@ function generateMatchesForGroups(){
 
   for(let c=1;c<=state.courts;c++){
     const court = String(c);
+    if(updateCourtCompletionByPairs(court)) continue;      // ya completo
     if(state.courtComplete[court]) continue;
-    if(updateCourtCompletionByPairs(court)) continue;
 
-    const alreadyOpen = state.matches.some(m=>m.court===c && m.round===(state.courtRound[court]||1) && m.status==="open");
+    const alreadyOpen = state.matches.some(
+      m=>m.court===c && m.round===(state.courtRound[court]||1) && m.status==="open"
+    );
     if(alreadyOpen) continue;
 
     if(!state.courtRound[court]) state.courtRound[court]=1;
@@ -380,7 +375,6 @@ function saveResult(matchId, sA, sB){
     state.round = Math.max(state.round, state.courtRound[courtKey]);
     updateCourtCompletionByPairs(courtKey);
 
-    // siguiente partido en esa cancha si corresponde
     if(!state.courtComplete[courtKey]){
       const next = findNextMatchForCourt(Number(courtKey));
       if(next) state.matches.push(next);
@@ -396,7 +390,7 @@ function saveResult(matchId, sA, sB){
   pushCloud(); renderAll();
 }
 
-/************** BRACKET **************/
+/************** BRACKET (ELIMINATORIA DOBLES) **************/
 const nearestPow2 = (n)=>{ const p=[2,4,8,16,32]; for(let i=p.length-1;i>=0;i--){ if(p[i]<=n) return p[i]; } return 2; };
 function globalRanking(){
   return Object.keys(state.standings)
@@ -404,20 +398,36 @@ function globalRanking(){
     .sort((a,b)=> b.pts - a.pts || b.wins - a.wins || a.losses - b.losses || a.name.localeCompare(b.name))
     .map(r=>r.name);
 }
-function pickBracketPlayers(){
-  const top = globalRanking();
-  const K = nearestPow2(top.length);
-  return top.slice(0, Math.max(4, K));
-}
-function buildInitialBracketMatches(players){
+
+/* Devuelve partidos de la PRIMERA ronda (semis o final) en formato dobles */
+function buildBracketRound1Matches(){
+  const ranked = globalRanking();
+  // número de equipos = potencia de 2 más cercana hacia abajo con los jugadores disponibles/2
+  const teamsCount = nearestPow2(Math.floor(ranked.length / 2));
+  if(teamsCount < 2) return []; // no hay suficientes
+
+  const takePlayers = teamsCount * 2;         // jugadores que entran a bracket
+  const selected    = ranked.slice(0, takePlayers);
+
+  // PAREJAS POR SIEMBRA: (1,último), (2,penúltimo), ...
+  const pairs = [];
+  for(let i=0;i<takePlayers/2;i++){
+    pairs.push([ selected[i], selected[takePlayers-1-i] ]);
+  }
+
+  // EMPAREJAMIENTO DE SEMIS/PRIMERA RONDA:
+  // ejemplo con 4 equipos (A,B,C,D): A vs D y B vs C  => 2 partidos
+  // ejemplo con 8 equipos: A vs H, B vs G, C vs F, D vs E => 4 partidos (cuartos)
+  const order = [];
+  for(let i=0;i<teamsCount/2;i++){
+    order.push([i, teamsCount-1-i]);
+  }
+
   const matches = [];
-  const mkTeamPairs = (arr)=>arr.map((_,i)=>[arr[i],arr[i+1]]).filter((_,i)=>i%2===0);
-  const teams = mkTeamPairs(players);
-  const opp   = mkTeamPairs([...players].reverse());
-  for(let i=0;i<teams.length;i++){
-    const t1 = teams[i];
-    const t2 = opp[i];
-    if(!t1 || !t2 || t1.length<2 || t2.length<2) continue;
+  for(let i=0;i<order.length;i++){
+    const [a,b] = order[i];
+    const t1 = pairs[a], t2 = pairs[b];
+    if(!t1 || !t2) continue;
     matches.push({
       id: crypto.randomUUID(),
       round: 1,
@@ -430,10 +440,11 @@ function buildInitialBracketMatches(players){
   }
   return matches;
 }
+
 function createBracket(){
   if(state.phase!=="groups") return;
-  const players = pickBracketPlayers();
-  if(players.length < 4){ alert("No hay suficientes jugadores para eliminatoria."); return; }
+  const firstRound = buildBracketRound1Matches();
+  if(firstRound.length===0){ alert("No hay suficientes jugadores para eliminatoria."); return; }
 
   state.matches = [];
   state.phase = "bracket";
@@ -442,14 +453,14 @@ function createBracket(){
   const btn = document.getElementById("advanceBracketBtn");
   if(btn) btn.remove();
 
-  const matches = buildInitialBracketMatches(players);
   state.courtRound = {};
   state.courtComplete = {};
   state.round = 1;
 
-  state.matches.push(...matches);
+  state.matches.push(...firstRound);
   pushCloud(); renderAll();
 }
+
 function advanceBracketIfReady(){
   if(state.phase!=="bracket") return;
   const current = state.matches.filter(m=>m.round===state.round);
@@ -559,7 +570,6 @@ function renderMatches(){
     ? openList
     : state.matches.filter(m=> m.round===state.round).sort((a,b)=>a.court-b.court);
 
-  // Si no hay abiertos y estamos en grupos, ofrece crear eliminatoria (fallback)
   if(state.phase==="groups"){
     const allDone = Array.from({length:state.courts},(_,i)=>String(i+1)).every(k=>state.courtComplete[k]);
     if(allDone || openList.length===0){
