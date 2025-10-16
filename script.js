@@ -1,7 +1,7 @@
 /************** CONFIG **************/
-const STORAGE_KEY  = "padel.americano.state.v11";
+const STORAGE_KEY  = "padel.americano.state.v12";
 
-/* ===== Firebase ===== (tu config real) */
+/* ===== Firebase ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyDm0J5dnEavIi0ow8o9q86Zl515E1zqIY0",
   authDomain: "padel-zac.firebaseapp.com",
@@ -17,40 +17,33 @@ let db = null;
 const MAX_PER_COURT = 8;
 
 const state = {
-  // setup guiado
-  courts: 0,           // 0 hasta que elijas
-  target: null,        // null hasta que elijas
+  courts: 0,
+  target: null,
   players: [],
   playerCourts: {},
 
-  // multi-dispositivo
   roomId: "",
   isHost: false,
 
-  // fases
   phase: "groups",     // "groups" | "bracket"
   locked: false,
 
-  // rondas
   round: 1,
-  courtRound: {},      // { "1": 1, ... }
-  courtComplete: {},   // { "1": bool, ... }
+  courtRound: {},
+  courtComplete: {},
 
-  // partidos & tabla
-  matches: [],         // {id, round, court, pairs, status:'open'|'done', scoreA, scoreB}
-  standings: {},       // { jug: {pts,wins,losses,played,lastRound} }
+  matches: [],
+  standings: {},
 
-  // historial
-  playedWith: {},      // { jug: Set() }
-  playedAgainst: {},   // { jug: Set() }
-  pairHistory: {},     // { "1": Set("A|B") }
-  fixtureHistory: {},  // { "1": Set("A|B_vs_C|D") }
+  playedWith: {},
+  playedAgainst: {},
+  pairHistory: {},     // { "1": Set(pairKey) }
+  fixtureHistory: {},  // { "1": Set(fixtureKey) }
 
   lastPlayedRound: {},
   playedOnCourt: {},
 
-  // para no intentar crear comodín muchas veces
-  ghostCreatedCourts: {}, // { "1": true }
+  ghostCreatedCourts: {},
 
   updatedAt: 0
 };
@@ -66,7 +59,7 @@ const matchesList=$("#matchesList"), generateBtn=$("#generateBtn");
 const tbody=$("#tbody"), resetBtn=$("#resetBtn");
 const roomIdTxt=$("#roomIdTxt"), copyRoomBtn=$("#copyRoomBtn");
 
-/************** LOCAL PERSIST **************/
+/************** LOCAL **************/
 const serSets = (obj)=>Object.fromEntries(Object.entries(obj||{}).map(([k,v])=>[k, Array.from(v||[])]));
 const revSets = (obj)=>Object.fromEntries(Object.entries(obj||{}).map(([k,v])=>[k, new Set(Array.isArray(v)?v:Object.keys(v||{}))]));
 
@@ -93,13 +86,13 @@ function loadLocal(){
   }catch(e){ console.warn("No se pudo cargar estado local:", e); }
 }
 
-/************** FIREBASE SYNC **************/
+/************** FIREBASE **************/
 function initFirebase(){
   if(!firebaseConfig || !firebaseConfig.apiKey){ roomIdTxt.textContent="—"; return; }
   firebase.initializeApp(firebaseConfig);
   db = firebase.database();
   let rid = (location.hash || "").replace("#","").trim();
-  if(!rid){ rid = Math.random().toString(36).slice(2,8); location.hash = rid; state.isHost = true; }
+  if(!rid){ rid = Math.random().toString(36).slice(2,8); location.hash=rid; state.isHost=true; }
   state.roomId = rid; roomIdTxt.textContent = rid; subscribeCloud();
 }
 let pushTimer=null;
@@ -118,7 +111,7 @@ function pushCloud(){
     state.updatedAt = payload.updatedAt;
     db.ref(`/sesiones/${state.roomId}/state`).set(payload);
     persistLocal(state);
-  }, 120);
+  }, 100);
 }
 function subscribeCloud(){
   const ref = db.ref(`/sesiones/${state.roomId}/state`);
@@ -149,10 +142,8 @@ function ensurePlayerInit(name){
 }
 const pairKey=(a,b)=>[a,b].sort().join("|");
 const fixtureKey=(a,b,c,d)=>[pairKey(a,b), pairKey(c,d)].sort().join("_vs_");
-const canEditSetup = ()=>{
-  const setupOk = state.courts>0 && Number.isInteger(state.target);
-  return setupOk && !state.locked && state.phase==="groups";
-};
+const setupOk = ()=> state.courts>0 && Number.isInteger(state.target);
+const canEditSetup = ()=> setupOk() && !state.locked && state.phase==="groups";
 
 function buildCourtBuckets(){
   const buckets={}; for(let c=1;c<=Math.max(1,state.courts);c++) buckets[c]=[];
@@ -164,7 +155,7 @@ function buildCourtBuckets(){
 }
 function countOnCourt(c){ return (buildCourtBuckets()[c]||[]).length; }
 
-/* === Comodín SOLO al generar partidos === */
+/* Comodín solo al generar */
 function maybeAddGhostOnGenerate(court){
   const buckets = buildCourtBuckets();
   const list = buckets[court] || [];
@@ -181,7 +172,7 @@ function maybeAddGhostOnGenerate(court){
   }
 }
 
-/************** JUGADORES (tope 8) **************/
+/************** JUGADORES **************/
 function canAddToCourt(court){
   const buckets = buildCourtBuckets();
   return ((buckets[court]||[]).length) < MAX_PER_COURT;
@@ -227,6 +218,12 @@ function* combinations4(arr){
         for(let l=k+1;l<n;l++)
           yield [arr[i],arr[j],arr[k],arr[l]];
 }
+
+/* === Emparejador estricto ===
+   1) Intento con DOS parejas nuevas (ideal → minimiza rondas).
+   2) Si no hay, acepto una nueva (solo cuando es imposible la opción 1).
+   3) Si tampoco hay, devuelvo null → cancha completa.
+*/
 function choosePairsForCourt(players4, court){
   const [p1,p2,p3,p4] = players4;
   const options = [
@@ -237,7 +234,7 @@ function choosePairsForCourt(players4, court){
   const usedPairs   = state.pairHistory[court]   || new Set();
   const usedFixture = state.fixtureHistory[court]|| new Set();
 
-  // TIER 1: ambas parejas NUEVAS y fixture nuevo (lo ideal -> garantiza 14 partidos con 8 jugadores)
+  // TIER 1: ambas parejas NUEVAS y fixture nuevo
   for (const [[a,b],[c,d]] of options){
     const pk1 = pairKey(a,b), pk2 = pairKey(c,d);
     const fk  = fixtureKey(a,b,c,d);
@@ -245,9 +242,7 @@ function choosePairsForCourt(players4, court){
       return [[a,b],[c,d]];
     }
   }
-
-  // TIER 2 (fallback): al menos una pareja nueva y fixture nuevo
-  // (solo se usará si de verdad ya no quedan combinaciones 100% nuevas)
+  // TIER 2: al menos una pareja nueva y fixture nuevo
   for (const [[a,b],[c,d]] of options){
     const pk1 = pairKey(a,b), pk2 = pairKey(c,d);
     const fk  = fixtureKey(a,b,c,d);
@@ -255,11 +250,8 @@ function choosePairsForCourt(players4, court){
       return [[a,b],[c,d]];
     }
   }
-
-  // Si no hay forma de crear fixture nuevo, devolvemos null -> se marca cancha completa
   return null;
 }
-
 
 function findNextMatchForCourt(court){
   const assigned = sortedCandidatesForCourt(court);
@@ -284,26 +276,32 @@ function findNextMatchForCourt(court){
   return null;
 }
 
+/* Total de parejas en una cancha y total teórico de partidos */
+const totalPairsOnCourt = (court)=>{
+  const n = (buildCourtBuckets()[court]||[]).length;
+  return n*(n-1)/2;
+};
+const theoreticalMatchesOnCourt = (court)=>{
+  const pairs = totalPairsOnCourt(court);
+  return Math.ceil(pairs/2); // cada partido consume 2 parejas
+};
+
 function updateCourtCompletionByPairs(court){
-  const players = buildCourtBuckets()[court] || [];
-  const n = players.length;
-  const totalPairs = n*(n-1)/2;
   const seen = state.pairHistory[String(court)] ? state.pairHistory[String(court)].size : 0;
-  if(seen >= totalPairs){
+  if(seen >= totalPairsOnCourt(court)){
     state.courtComplete[String(court)] = true;
     return true;
   }
   return false;
 }
 
+/* !!! AHORA permite generar aunque locked sea true (si el setup está listo) */
 function generateMatchesForGroups(){
-  if(!canEditSetup()) return alert("Primero finaliza el setup (canchas y meta).");
+  if(!setupOk()) return alert("Primero finaliza el setup (canchas y meta).");
   state.locked = true;
 
-  // *** Comodín SOLO aquí ***
-  for(let c=1;c<=state.courts;c++){
-    maybeAddGhostOnGenerate(c);
-  }
+  // comodín solo aquí
+  for(let c=1;c<=state.courts;c++){ maybeAddGhostOnGenerate(c); }
 
   for(let c=1;c<=state.courts;c++){
     const court = String(c);
@@ -382,7 +380,7 @@ function saveResult(matchId, sA, sB){
     state.round = Math.max(state.round, state.courtRound[courtKey]);
     updateCourtCompletionByPairs(courtKey);
 
-    // Auto-crear el siguiente partido de ESA cancha si no está completa
+    // siguiente partido en esa cancha si corresponde
     if(!state.courtComplete[courtKey]){
       const next = findNextMatchForCourt(Number(courtKey));
       if(next) state.matches.push(next);
@@ -392,7 +390,6 @@ function saveResult(matchId, sA, sB){
     const allDone = Array.from({length:state.courts},(_,i)=>String(i+1)).every(k=>state.courtComplete[k]);
     if(allDone){ renderAdvanceToBracketButton(); }
   }else{
-    // BRACKET
     advanceBracketIfReady();
   }
 
@@ -438,7 +435,6 @@ function createBracket(){
   const players = pickBracketPlayers();
   if(players.length < 4){ alert("No hay suficientes jugadores para eliminatoria."); return; }
 
-  // limpiar partidos de grupos
   state.matches = [];
   state.phase = "bracket";
   state.locked = true;
@@ -486,8 +482,7 @@ function renderPlayers(){
   playersList.innerHTML="";
   assignHint.style.display = state.courts>1 ? "block":"none";
 
-  const setupOk = state.courts>0 && Number.isInteger(state.target);
-  const canEdit = setupOk && !state.locked && state.phase==="groups";
+  const canEdit = canEditSetup();
   playerName.disabled = !canEdit; addPlayerBtn.disabled = !canEdit;
   courtsSelect.value = state.courts ? String(state.courts) : "";
   targetSelect.value = Number.isInteger(state.target) ? String(state.target) : "";
@@ -516,6 +511,21 @@ function renderPlayers(){
     playersList.appendChild(li);
   }
 }
+
+function renderProgressSummary(){
+  const box = document.createElement("div");
+  box.className = "muted";
+  let lines = [];
+  for(let c=1;c<=Math.max(1,state.courts||1);c++){
+    const totalPairs = totalPairsOnCourt(c);
+    const seen = state.pairHistory[String(c)] ? state.pairHistory[String(c)].size : 0;
+    const theo = theoreticalMatchesOnCourt(c);
+    lines.push(`Cancha ${c}: parejas ${seen}/${totalPairs} · partidos teóricos ${theo}`);
+  }
+  box.textContent = lines.join("  |  ");
+  return box;
+}
+
 function renderAdvanceToBracketButton(){
   if(state.phase!=="groups") return;
   const existing = $("#advanceBracketBtn"); if(existing) return;
@@ -527,8 +537,10 @@ function renderAdvanceToBracketButton(){
   btn.addEventListener("click", createBracket);
   matchesList.prepend(btn);
 }
+
 function renderMatches(){
   matchesList.innerHTML="";
+  matchesList.appendChild(renderProgressSummary());
 
   if(state.phase==="groups"){
     for(let c=1;c<=Math.max(1,state.courts||1);c++){
@@ -542,9 +554,18 @@ function renderMatches(){
     }
   }
 
+  const openList = state.matches.filter(m=> m.status==="open").sort((a,b)=>a.court-b.court);
   const list = state.phase==="groups"
-    ? state.matches.filter(m=> m.status==="open").sort((a,b)=>a.court-b.court)
+    ? openList
     : state.matches.filter(m=> m.round===state.round).sort((a,b)=>a.court-b.court);
+
+  // Si no hay abiertos y estamos en grupos, ofrece crear eliminatoria (fallback)
+  if(state.phase==="groups"){
+    const allDone = Array.from({length:state.courts},(_,i)=>String(i+1)).every(k=>state.courtComplete[k]);
+    if(allDone || openList.length===0){
+      renderAdvanceToBracketButton();
+    }
+  }
 
   if(list.length===0){
     const hint=document.createElement("div");
@@ -590,6 +611,7 @@ function renderMatches(){
     matchesList.appendChild(el);
   }
 }
+
 function renderTable(){
   const rows = Object.entries(state.standings)
     .map(([name,data])=>({name,...data}))
@@ -617,10 +639,7 @@ function renderAll(){
 
 /************** EVENTOS **************/
 document.addEventListener("DOMContentLoaded", ()=>{
-  loadLocal();
-  persistLocal(state);
-  renderAll();
-  initFirebase();
+  loadLocal(); persistLocal(state); renderAll(); initFirebase();
 
   copyRoomBtn.addEventListener("click", ()=>{
     const url = location.href.split("#")[0] + (state.roomId?("#"+state.roomId):"");
@@ -675,16 +694,3 @@ document.addEventListener("DOMContentLoaded", ()=>{
     pushCloud(); renderAll();
   });
 });
-
-/************** BRACKET UI helper **************/
-function renderAdvanceToBracketButton(){
-  if(state.phase!=="groups") return;
-  const existing = $("#advanceBracketBtn"); if(existing) return;
-  const btn = document.createElement("button");
-  btn.id = "advanceBracketBtn";
-  btn.className = "primary";
-  btn.style = "margin:10px 0; width:100%";
-  btn.textContent = "Crear eliminatoria";
-  btn.addEventListener("click", createBracket);
-  matchesList.prepend(btn);
-}
