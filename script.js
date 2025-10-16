@@ -1,5 +1,5 @@
 /************** CONFIG **************/
-const STORAGE_KEY  = "padel.americano.state.v10";
+const STORAGE_KEY  = "padel.americano.state.v11";
 
 /* ===== Firebase ===== (tu config real) */
 const firebaseConfig = {
@@ -48,6 +48,9 @@ const state = {
 
   lastPlayedRound: {},
   playedOnCourt: {},
+
+  // para no intentar crear comodín muchas veces
+  ghostCreatedCourts: {}, // { "1": true }
 
   updatedAt: 0
 };
@@ -159,49 +162,26 @@ function buildCourtBuckets(){
   }
   return buckets;
 }
-
-/* === Tope 8 y Comodín visible === */
 function countOnCourt(c){ return (buildCourtBuckets()[c]||[]).length; }
 
-function ensureGhostsVisible(){
+/* === Comodín SOLO al generar partidos === */
+function maybeAddGhostOnGenerate(court){
   const buckets = buildCourtBuckets();
-  for(let c=1;c<=state.courts;c++){
-    const court = String(c);
-    const ghost = `comodin-${court}`;
-    const total = (buckets[c]||[]).length;
-    const hasGhost = state.players.includes(ghost);
-    // crear sólo si impar >=5 y cabe en el tope 8
-    if(total>=5 && total%2===1 && !hasGhost && total+1 <= MAX_PER_COURT){
-      state.players.push(ghost);
-      ensurePlayerInit(ghost);
-      state.playerCourts[ghost]=c;
-    }
-    // si por algún motivo se rebasó 8, no permitir
-    if((buckets[c]||[]).length > MAX_PER_COURT){
-      // recortar últimos manualmente (no debería suceder con validaciones)
-      const extra = (buckets[c].length - MAX_PER_COURT);
-      if(extra>0){
-        const victims = buckets[c].slice(-extra);
-        victims.forEach(v=>{
-          if(!v.startsWith("comodin-")){
-            // muévelo a otra cancha si hay cupo, si no, bloquear agregado (se evita en addPlayer)
-            // aquí sólo garantizamos que no explote
-          }
-        });
-      }
+  const list = buckets[court] || [];
+  const ghostName = `comodin-${court}`;
+  const hasGhost = state.players.includes(ghostName);
+
+  if(list.length>=5 && list.length%2===1){
+    if(!hasGhost && list.length + 1 <= MAX_PER_COURT){
+      state.players.push(ghostName);
+      ensurePlayerInit(ghostName);
+      state.playerCourts[ghostName]=court;
+      state.ghostCreatedCourts[String(court)] = true;
     }
   }
 }
 
-function availablePlayersByCourt(court){
-  const busy=new Set();
-  for(const m of state.matches){
-    if(m.court===court && m.status==="open"){ m.pairs.flat().forEach(p=>busy.add(p)); }
-  }
-  return buildCourtBuckets()[court].filter(p=>!busy.has(p));
-}
-
-/************** JUGADORES (validando tope de 8) **************/
+/************** JUGADORES (tope 8) **************/
 function canAddToCourt(court){
   const buckets = buildCourtBuckets();
   return ((buckets[court]||[]).length) < MAX_PER_COURT;
@@ -211,13 +191,10 @@ function addPlayer(name){
   const n=(name||"").trim();
   if(!n) return alert("Escribe un nombre.");
   if(state.players.includes(n)) return alert("Ese nombre ya existe.");
-  // por defecto asigna a la cancha 1 (si hay cupo)
-  const court = 1;
-  if(!canAddToCourt(court)) return alert("Cancha 1 llegó al máximo de 8 jugadores.");
+  if(!canAddToCourt(1)) return alert("Cancha 1 llegó al máximo de 8 jugadores.");
   state.players.push(n);
   ensurePlayerInit(n);
-  state.playerCourts[n]=court;
-  ensureGhostsVisible();
+  state.playerCourts[n]=1;
   pushCloud(); renderAll();
 }
 function removePlayer(name){
@@ -232,12 +209,6 @@ function removePlayer(name){
 }
 
 /************** GENERACIÓN (GRUPOS) **************/
-/* — Heurística robusta —
-   1) Ordeno la lista por “menos jugados en esa cancha” y por descanso.
-   2) De los primeros hasta 8, pruebo TODAS las combinaciones de 4 (≈70 como máx).
-   3) Para cada combinación, busco la mejor división en parejas que no repita fixture.
-   4) Si encuentro una, la uso; si no, marco cancha completa.
-*/
 function sortedCandidatesForCourt(court){
   const assigned = buildCourtBuckets()[court]||[];
   return assigned
@@ -266,36 +237,36 @@ function choosePairsForCourt(players4, court){
   const usedPairs   = state.pairHistory[court]   || new Set();
   const usedFixture = state.fixtureHistory[court]|| new Set();
 
-  let best=null, bestScore=Infinity;
-  for(const [[a,b],[c,d]] of options){
-    let score = 0;
-    const pk1=pairKey(a,b), pk2=pairKey(c,d);
-    const fk = fixtureKey(a,b,c,d);
-    if(usedFixture.has(fk)) score += 1000;
-    if(usedPairs.has(pk1)) score += 200;
-    if(usedPairs.has(pk2)) score += 200;
-    if(state.playedWith[a]?.has(b)) score += 20;
-    if(state.playedWith[c]?.has(d)) score += 20;
-    [ [a,c],[a,d],[b,c],[b,d] ].forEach(([x,y])=>{
-      if(state.playedAgainst[x]?.has(y)) score += 5;
-    });
-    if(score<bestScore){ bestScore=score; best=[[a,b],[c,d]]; }
+  // TIER 1: ambas parejas NUEVAS y fixture nuevo (lo ideal -> garantiza 14 partidos con 8 jugadores)
+  for (const [[a,b],[c,d]] of options){
+    const pk1 = pairKey(a,b), pk2 = pairKey(c,d);
+    const fk  = fixtureKey(a,b,c,d);
+    if (!usedPairs.has(pk1) && !usedPairs.has(pk2) && !usedFixture.has(fk)) {
+      return [[a,b],[c,d]];
+    }
   }
-  if(!best) return null;
-  const fk = fixtureKey(best[0][0],best[0][1],best[1][0],best[1][1]);
-  if((state.fixtureHistory[court]||new Set()).has(fk)) return null;
-  return best;
+
+  // TIER 2 (fallback): al menos una pareja nueva y fixture nuevo
+  // (solo se usará si de verdad ya no quedan combinaciones 100% nuevas)
+  for (const [[a,b],[c,d]] of options){
+    const pk1 = pairKey(a,b), pk2 = pairKey(c,d);
+    const fk  = fixtureKey(a,b,c,d);
+    if ((!usedPairs.has(pk1) || !usedPairs.has(pk2)) && !usedFixture.has(fk)) {
+      return [[a,b],[c,d]];
+    }
+  }
+
+  // Si no hay forma de crear fixture nuevo, devolvemos null -> se marca cancha completa
+  return null;
 }
 
+
 function findNextMatchForCourt(court){
-  ensureGhostsVisible();
   const assigned = sortedCandidatesForCourt(court);
   if(assigned.length < 4) return null;
 
   const pool = assigned.slice(0, Math.min(8, assigned.length));
-  // probar todas las combinaciones de 4 del “pool”
   for(const four of combinations4(pool)){
-    // comprobar que no estén ocupados (en grupos nunca habrá “open” extra al guardar)
     const pairs = choosePairsForCourt(four, String(court));
     if(pairs){
       const rnd = state.courtRound[String(court)] || 1;
@@ -313,7 +284,6 @@ function findNextMatchForCourt(court){
   return null;
 }
 
-/* Completar por parejas posibles: C(n,2) */
 function updateCourtCompletionByPairs(court){
   const players = buildCourtBuckets()[court] || [];
   const n = players.length;
@@ -329,7 +299,11 @@ function updateCourtCompletionByPairs(court){
 function generateMatchesForGroups(){
   if(!canEditSetup()) return alert("Primero finaliza el setup (canchas y meta).");
   state.locked = true;
-  ensureGhostsVisible();
+
+  // *** Comodín SOLO aquí ***
+  for(let c=1;c<=state.courts;c++){
+    maybeAddGhostOnGenerate(c);
+  }
 
   for(let c=1;c<=state.courts;c++){
     const court = String(c);
@@ -440,7 +414,6 @@ function pickBracketPlayers(){
 }
 function buildInitialBracketMatches(players){
   const matches = [];
-  // seeding simple en dobles: (1,2) vs (7,8) y (3,4) vs (5,6) ... etc
   const mkTeamPairs = (arr)=>arr.map((_,i)=>[arr[i],arr[i+1]]).filter((_,i)=>i%2===0);
   const teams = mkTeamPairs(players);
   const opp   = mkTeamPairs([...players].reverse());
@@ -537,7 +510,7 @@ function renderPlayers(){
       li.querySelector(".pcourt").addEventListener("change",(e)=>{
         const c = Number(e.target.value);
         if(!canAddToCourt(c)) { e.target.value = String(state.playerCourts[p]||1); return alert(`La cancha ${c} ya tiene 8 jugadores.`); }
-        state.playerCourts[p]=c; ensureGhostsVisible(); pushCloud();
+        state.playerCourts[p]=c; pushCloud();
       });
     }
     playersList.appendChild(li);
@@ -663,13 +636,11 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
     state.pairHistory = {}; state.fixtureHistory = {};
     state.courtRound = {}; state.courtComplete = {};
+    state.ghostCreatedCourts = {};
     for(let c=1;c<=Math.max(1,state.courts||1);c++){ state.courtRound[String(c)]=1; state.courtComplete[String(c)]=false; }
-    // clamp asignaciones y validar tope
     for(const p of state.players){
       state.playerCourts[p]=Math.min(Math.max(1,state.playerCourts[p]||1), Math.max(1,state.courts||1));
     }
-    // si alguna cancha supera 8, avisa (el usuario puede moverlos)
-    ensureGhostsVisible();
     pushCloud(); renderAll();
   });
 
@@ -698,6 +669,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
       standings:{}, playedWith:{}, playedAgainst:{},
       pairHistory:{}, fixtureHistory:{},
       lastPlayedRound:{}, playedOnCourt:{},
+      ghostCreatedCourts:{},
       updatedAt: Date.now()
     });
     pushCloud(); renderAll();
