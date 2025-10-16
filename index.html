@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Americano Padel</title>
-  <link rel="stylesheet" href="./style.css?v=8" />
-  <!-- Firebase (CDN) -->
+  <link rel="stylesheet" href="./style.css?v=10" />
+  <!-- Firebase (CDN compat) -->
   <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
@@ -18,18 +18,23 @@
           Sala: <strong id="roomIdTxt">—</strong>
           <button id="copyRoomBtn" class="ghost" style="margin-left:6px;">Copiar</button>
         </div>
+
         <label>Canchas:
           <select id="courtsSelect">
+            <option value="">—</option>
             <option>1</option><option>2</option><option>3</option>
             <option>4</option><option>5</option><option>6</option>
           </select>
         </label>
+
         <label style="margin-left:10px">Meta (juegos):
           <select id="targetSelect">
-            <option selected>3</option><option>5</option><option>6</option>
+            <option value="">—</option>
+            <option>3</option><option>5</option><option>6</option>
             <option>7</option><option>9</option>
           </select>
         </label>
+
         <span class="sep"></span>
         <strong>Ronda: <span id="roundLabel">1</span></strong>
       </div>
@@ -44,7 +49,7 @@
           <button id="addPlayerBtn" class="primary">Agregar</button>
         </div>
         <p class="muted small" id="assignHint" style="display:none">
-          Con 2+ canchas: asigna cada jugador a una cancha.
+          Con 2+ canchas: asigna cada jugador a una cancha (máximo 8 por cancha).
         </p>
         <ul id="playersList" class="list"></ul>
         <div class="row" style="margin-top:12px">
@@ -77,6 +82,6 @@
     </main>
   </section>
 
-  <script src="./script.js?v=8" defer></script>
+  <script src="./script.js?v=10" defer></script>
 </body>
 </html>
