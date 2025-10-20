@@ -1,5 +1,5 @@
 /************** CONFIG **************/
-const STORAGE_KEY  = "padel.americano.state.v16";
+const STORAGE_KEY  = "padel.americano.state.v17";
 const MAX_PER_COURT = 8;
 
 /* ===== Firebase (tus credenciales) ===== */
@@ -45,12 +45,11 @@ const roundLabel = $("#roundLabel"), roundLabel2=$("#roundLabel2");
 const playerName = $("#playerName"), addPlayerBtn=$("#addPlayerBtn");
 const playersList=$("#playersList"), assignHint=$("#assignHint");
 const matchesList=$("#matchesList"), generateBtn=$("#generateBtn");
+const progressInline=$("#progressInline");
 const tbody=$("#tbody"), resetBtn=$("#resetBtn");
 const roomIdTxt=$("#roomIdTxt"), copyRoomBtn=$("#copyRoomBtn");
 
 /************** UTIL **************/
-const serSets = (obj)=>Object.fromEntries(Object.entries(obj||{}).map(([k,v])=>[k, Array.from(v||[])]));
-const revSets = (obj)=>Object.fromEntries(Object.entries(obj||{}).map(([k,v])=>[k, new Set(Array.isArray(v)?v:Object.keys(v||{}))]));
 function persistLocal(s=state){
   const safe = {
     ...s,
@@ -122,7 +121,6 @@ function ensurePlayerInit(name){
   if(!state.lastPlayedRound[name]) state.lastPlayedRound[name]=0;
   if(!state.playedOnCourt[name]) state.playedOnCourt[name]={};
 }
-
 function buildCourtBuckets(){
   const buckets={}; for(let c=1;c<=Math.max(1,state.courts);c++) buckets[c]=[];
   for(const p of state.players){
@@ -135,7 +133,6 @@ function canAddToCourt(court){
   const buckets = buildCourtBuckets();
   return ((buckets[court]||[]).length) < MAX_PER_COURT;
 }
-
 function* combinations4(arr){
   const n=arr.length;
   for(let i=0;i<n-3;i++)
@@ -158,7 +155,6 @@ const doneMatchesOnCourt = (court)=>{
 function courtIsComplete(court){
   return doneMatchesOnCourt(court) >= theoreticalMatchesOnCourt(court);
 }
-
 function sortedCandidatesForCourt(court){
   const assigned = (buildCourtBuckets()[court]||[]);
   return assigned
@@ -169,7 +165,6 @@ function sortedCandidatesForCourt(court){
     .sort((a,b)=>a.score-b.score)
     .map(x=>x.p);
 }
-
 function choosePairsAvoidingRepeats(players4, courtStr){
   const [p1,p2,p3,p4] = players4;
   const options = [
@@ -179,7 +174,6 @@ function choosePairsAvoidingRepeats(players4, courtStr){
   ];
   const usedPairs   = state.pairHistory[courtStr]   || new Set();
   const usedFixture = state.fixtureHistory[courtStr]|| new Set();
-
   for (const [[a,b],[c,d]] of options){
     const pk1 = pairKey(a,b), pk2 = pairKey(c,d);
     const fk  = fixtureKey(a,b,c,d);
@@ -192,7 +186,6 @@ function choosePairsAvoidingRepeats(players4, courtStr){
   }
   return options[0];
 }
-
 function maybeAddGhostOnGenerate(court){
   const list = (buildCourtBuckets()[court]||[]);
   const ghost = `comodin-${court}`;
@@ -206,15 +199,12 @@ function maybeAddGhostOnGenerate(court){
     }
   }
 }
-
 function findNextMatchForCourt(court){
   const courtStr = String(court);
   if(courtIsComplete(court)) return null;
-
   const poolBase = sortedCandidatesForCourt(court);
   if(poolBase.length < 4) return null;
   const pool = poolBase.slice(0, Math.min(8, poolBase.length));
-
   for(const four of combinations4(pool)){
     const pairs = choosePairsAvoidingRepeats(four, courtStr);
     if(pairs){
@@ -232,18 +222,14 @@ function findNextMatchForCourt(court){
   }
   return null;
 }
-
 function pruneOpenIfCompleted(court){
   if(!courtIsComplete(court)) return;
   state.matches = state.matches.filter(m=> !(m.court===court && m._group && m.status==="open"));
 }
-
 function generateMatchesForGroups(){
-  if(!setupOk()) return alert("Primero finaliza el setup (canchas y meta).");
+  if(!setupOk()) return alert("Primero elige canchas y meta (juegos).");
   state.locked = true;
-
   for(let c=1;c<=state.courts;c++) maybeAddGhostOnGenerate(c);
-
   for(let c=1;c<=state.courts;c++){
     if(courtIsComplete(c)){ pruneOpenIfCompleted(c); continue; }
     const alreadyOpen = state.matches.some(m=>m.court===c && m._group && m.status==="open");
@@ -252,7 +238,6 @@ function generateMatchesForGroups(){
     if(next) state.matches.push(next);
     if(courtIsComplete(c)) pruneOpenIfCompleted(c);
   }
-
   let maxR = 1;
   for(let c=1;c<=state.courts;c++){
     const theo = theoreticalMatchesOnCourt(c);
@@ -261,9 +246,7 @@ function generateMatchesForGroups(){
     maxR = Math.max(maxR, Math.min(theo, done + open));
   }
   state.round = maxR;
-
   pushCloud(); renderAll();
-
   const allDone = Array.from({length:state.courts},(_,i)=>i+1).every(c=>courtIsComplete(c));
   if(allDone && state.phase==="groups") renderAdvanceToBracketButton();
 }
@@ -292,17 +275,14 @@ function applyTeam(team, gamesWon, gamesLost, courtKey){
 function saveResult(matchId, sA, sB){
   const m = state.matches.find(x=>x.id===matchId);
   if(!m || m.status!=="open") return;
-
   const a = Number(sA), b = Number(sB);
   const err = validateScore(a,b);
   if(err) return alert(err);
-
   m.status="done"; m.scoreA=a; m.scoreB=b;
   const [t1,t2] = m.pairs;
   const courtKey = String(m.court);
   applyTeam(t1, a, b, courtKey);
   applyTeam(t2, b, a, courtKey);
-
   const winner = (a>b)? t1 : t2; const loser  = (a>b)? t2 : t1;
   winner.forEach(p=>state.standings[p].wins+=1);
   loser.forEach(p=>state.standings[p].losses+=1);
@@ -321,13 +301,11 @@ function saveResult(matchId, sA, sB){
       maxR = Math.max(maxR, Math.min(theo, done + open));
     }
     state.round = maxR;
-
     const allDone = Array.from({length:state.courts},(_,i)=>i+1).every(c=>courtIsComplete(c));
     if(allDone){ renderAdvanceToBracketButton(); }
   }else{
     advanceBracketIfReady();
   }
-
   pushCloud(); renderAll();
 }
 
@@ -363,8 +341,9 @@ function createRoundFromTeams(teams, startRound){
   return matches;
 }
 
+/* *** Regla AUTO actualizada: >=14 jugadores => Cuartos *** */
 function figurePlayoffModeAuto(totalPlayers){
-  if(totalPlayers>=16) return "quarters";
+  if(totalPlayers>=14) return "quarters";  // 13 + comodín o 8+6, etc.
   if(totalPlayers>=8)  return "semis";
   if(totalPlayers>=4)  return "final";
   return "none";
@@ -375,7 +354,6 @@ function createBracket(){
   for(let c=1;c<=state.courts;c++){
     if(!courtIsComplete(c)) return alert("Primero termina el americano en todas las canchas.");
   }
-
   const ranked = globalRanking();
   const total = ranked.length;
   const chosen = state.playoffMode==="auto" ? figurePlayoffModeAuto(total) : state.playoffMode;
@@ -387,55 +365,45 @@ function createBracket(){
   state.round = 1;
 
   let firstRoundTeams=[];
-
   if(chosen==="final"){
-    if(total<4) return alert("Se requieren al menos 4 jugadores para una final (Top-4).");
-    const block = ranked.slice(0,4);
-    firstRoundTeams = makeTeamsFromGroup(block); // 2 equipos → 1 partido
+    if(total<4) return alert("Se requieren al menos 4 jugadores para final (Top-4).");
+    firstRoundTeams = makeTeamsFromGroup(ranked.slice(0,4));   // 2 equipos → 1 partido
   }
   if(chosen==="semis"){
     if(total<8) return alert("Se requieren al menos 8 jugadores para semifinales (Top-8).");
-    const block = ranked.slice(0,8);
-    firstRoundTeams = makeTeamsFromGroup(block); // 4 equipos → 2 partidos (semis)
+    firstRoundTeams = makeTeamsFromGroup(ranked.slice(0,8));   // 4 equipos → 2 partidos
   }
   if(chosen==="quarters"){
-    if(total<16) return alert("Se requieren al menos 16 jugadores para cuartos (Top-16).");
-    const block = ranked.slice(0,16);
-    firstRoundTeams = makeTeamsFromGroup(block); // 8 equipos → 4 partidos (cuartos)
+    if(total<14) return alert("Se requieren al menos 14 jugadores para cuartos (Top-16).");
+    firstRoundTeams = makeTeamsFromGroup(ranked.slice(0,16));  // 8 equipos → 4 partidos
   }
-
   if(firstRoundTeams.length<2) return alert("No hay suficientes equipos para iniciar el playoff.");
 
   const firstMatches = createRoundFromTeams(firstRoundTeams, 1);
   state.matches.push(...firstMatches);
   pushCloud(); renderAll();
 }
-
 function advanceBracketIfReady(){
   if(state.phase!=="bracket") return;
   const current = state.matches.filter(m=>m.round===state.round && !m._group);
   if(current.length===0) return;
   if(current.some(m=>m.status!=="done")) return;
-
   const winners = current.map(m => (m.scoreA>m.scoreB) ? m.pairs[0] : m.pairs[1]);
   if(winners.length===1){ return; } // campeón
-
-  const nextTeams = winners;
   state.round += 1;
-  state.matches.push(...createRoundFromTeams(nextTeams, state.round));
+  state.matches.push(...createRoundFromTeams(winners, state.round));
 }
 
 /************** RENDER **************/
 function renderPlayers(){
   playersList.innerHTML="";
   assignHint.style.display = state.courts>1 ? "block":"none";
-
   const canEdit = canEditSetup();
   playerName.disabled = !canEdit; addPlayerBtn.disabled = !canEdit;
+
   courtsSelect.value = state.courts ? String(state.courts) : "";
   targetSelect.value = Number.isInteger(Number(state.target)) ? String(state.target) : "";
   playoffSelect.value = state.playoffMode || "auto";
-
   courtsSelect.disabled = state.locked || state.phase!=="groups";
   targetSelect.disabled = state.locked || state.phase!=="groups";
   playoffSelect.disabled = state.phase!=="groups";
@@ -447,10 +415,7 @@ function renderPlayers(){
       <select class="pcourt" data-name="${p}" title="Cancha" ${!canEdit?'disabled':''}>
         ${Array.from({length:state.courts},(_,i)=>`<option value="${i+1}" ${ (state.playerCourts[p]||1)===(i+1)?'selected':''}>${i+1}</option>`).join("")}
       </select>` : "";
-    li.innerHTML = `<div style="display:flex;gap:8px;align-items:center;">
-        <strong>${p}</strong>${courtSel}
-      </div>
-      <span class="x" title="Eliminar" ${!canEdit?'style="opacity:.4;pointer-events:none"':''}>✕</span>`;
+    li.innerHTML = `<strong>${p}</strong>${courtSel}<span class="x">✕</span>`;
     li.querySelector(".x").addEventListener("click",()=>{ if(!canEdit) return; removePlayer(p); });
     if(state.courts>1 && canEdit){
       li.querySelector(".pcourt").addEventListener("change",(e)=>{
@@ -468,18 +433,14 @@ function removePlayer(name){
   delete state.playerCourts[name]; delete state.standings[name];
   pushCloud(); renderAll();
 }
-
-function renderProgressSummary(){
-  const box = document.createElement("div");
-  box.className = "muted";
-  let lines = [];
+function renderProgressInline(){
+  const parts=[];
   for(let c=1;c<=Math.max(1,state.courts||1);c++){
     const theo = theoreticalMatchesOnCourt(c);
     const done = doneMatchesOnCourt(c);
-    lines.push(`Cancha ${c}: partidos ${done}/${theo}`);
+    parts.push(`Cancha ${c}: ${done}/${theo}`);
   }
-  box.textContent = lines.join("  ·  ");
-  return box;
+  progressInline.textContent = parts.join(" · ");
 }
 function renderAdvanceToBracketButton(){
   if(state.phase!=="groups") return;
@@ -487,7 +448,7 @@ function renderAdvanceToBracketButton(){
   const btn = document.createElement("button");
   btn.id = "advanceBracketBtn";
   btn.className = "primary";
-  btn.style = "margin:10px 0; width:100%";
+  btn.style = "margin:8px 0;width:100%";
   const mode = state.playoffMode==="auto" ? `Auto` :
                state.playoffMode==="final" ? `Final` :
                state.playoffMode==="semis" ? `Semifinales` :
@@ -496,10 +457,9 @@ function renderAdvanceToBracketButton(){
   btn.addEventListener("click", createBracket);
   matchesList.prepend(btn);
 }
-
 function renderMatches(){
   matchesList.innerHTML="";
-  matchesList.appendChild(renderProgressSummary());
+  renderProgressInline();
 
   if(state.phase==="groups"){
     for(let c=1;c<=Math.max(1,state.courts||1);c++){
@@ -539,34 +499,26 @@ function renderMatches(){
     const teamHtml = (team)=>team.map(n=>`<span class="badge">${n}</span>`).join(" ");
     el.innerHTML=`
       <div class="muted">${state.phase==="groups" ? `Cancha ${m.court}` : `Eliminatoria`} · ${m.status==="open"?"En juego":"Terminado"}</div>
-      <div class="teams" style="margin:6px 0 8px;">
-        <div class="team">${teamHtml(t1)}</div>
+      <div class="teams">
+        <div>${teamHtml(t1)}</div>
         <div class="vs">VS</div>
-        <div class="team">${teamHtml(t2)}</div>
+        <div>${teamHtml(t2)}</div>
       </div>
       <div class="row">
-        <div class="row">
-          <label class="muted">Marcador (a ${state.target ?? "?"}):</label>
-          <input type="number" min="0" value="${m.scoreA}" ${m.status==="done"?"disabled":""} class="sA" style="width:70px"/>
-          <span>-</span>
-          <input type="number" min="0" value="${m.scoreB}" ${m.status==="done"?"disabled":""} class="sB" style="width:70px"/>
-        </div>
-        <div class="right"></div>
-        ${m.status==="open"
-          ? `<button class="primary save">Guardar resultado</button>`
-          : `<span class="badge" style="border-color:#345">Final: ${m.scoreA} - ${m.scoreB}</span>`
-        }
+        <span class="muted">Marcador (a ${state.target ?? "?"}):</span>
+        <input type="number" min="0" value="${m.scoreA}" ${m.status==="done"?"disabled":""} class="sA" style="width:60px"/>
+        <span>-</span>
+        <input type="number" min="0" value="${m.scoreB}" ${m.status==="done"?"disabled":""} class="sB" style="width:60px"/>
+        <button class="primary save" ${m.status==="done"?"disabled":""} style="margin-left:8px;">Guardar resultado</button>
+        ${m.status==="done"?`<span class="badge" style="margin-left:8px;border-color:#345">Final: ${m.scoreA} - ${m.scoreB}</span>`:""}
       </div>`;
-    if(m.status==="open"){
-      el.querySelector(".save").addEventListener("click",()=>{
-        const sA=el.querySelector(".sA").value; const sB=el.querySelector(".sB").value;
-        saveResult(m.id, sA, sB);
-      });
-    }
+    el.querySelector(".save").addEventListener("click",()=>{
+      const sA=el.querySelector(".sA").value; const sB=el.querySelector(".sB").value;
+      saveResult(m.id, sA, sB);
+    });
     matchesList.appendChild(el);
   }
 }
-
 function renderTable(){
   const rows = Object.entries(state.standings)
     .map(([name,data])=>({name,...data}))
@@ -574,13 +526,11 @@ function renderTable(){
   tbody.innerHTML="";
   rows.forEach((r,idx)=>{
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td class="rank">${idx+1}</td>
-      <td>${r.name}</td><td>${r.pts}</td><td>${r.wins}</td>
-      <td>${r.losses}</td><td>${r.played}</td><td>${r.lastRound||0}</td>`;
+    tr.innerHTML=`<td>${idx+1}</td><td>${r.name}</td><td>${r.pts}</td>
+      <td>${r.wins}</td><td>${r.losses}</td><td>${r.played}</td><td>${r.lastRound||0}</td>`;
     tbody.appendChild(tr);
   });
 }
-
 function renderAll(){
   roundLabel.textContent= String(state.round||1);
   roundLabel2.textContent= String(state.round||1);
