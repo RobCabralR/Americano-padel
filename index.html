@@ -2,111 +2,95 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Americano Padel</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Firebase compat (para sala en vivo, misma URL en varios dispositivos) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="left">
-      <strong>Gestión de Jornada</strong>
-    </div>
-
-    <div class="right pillrow">
-      <span class="room">
-        Sala:
-        <span id="roomId" class="pill"></span>
-        <button id="copyRoom" class="ghost">Copiar</button>
-      </span>
-
-      <label class="select small">
-        Canchas:
-        <select id="selCourts">
+    <div class="pillrow">
+      <span class="pill">Sala: <strong id="roomIdTxt">—</strong></span>
+      <button id="copyRoomBtn" class="ghost">Copiar</button>
+      <span class="sep"></span>
+      <label>Canchas:</label>
+      <span class="select small">
+        <select id="courtsSelect">
+          <option value="" selected>—</option>
           <option value="1">1</option>
           <option value="2">2</option>
-          <option value="3">3</option>
         </select>
-      </label>
-
-      <label class="select small">
-        Meta (juegos):
-        <select id="selTarget">
+      </span>
+      <label class="small">Meta (juegos):</label>
+      <span class="select small">
+        <select id="targetSelect">
+          <option value="" selected>—</option>
           <option value="3">3</option>
           <option value="4">4</option>
           <option value="6">6</option>
         </select>
-      </label>
+      </span>
+      <span class="pill">Ronda: <strong id="roundLabel">1</strong></span>
+    </div>
 
-      <label class="select small">
-        Playoff:
-        <select id="selPlayoff">
-          <option value="auto">Automático</option>
+    <div class="pillrow">
+      <label class="small">Playoff:</label>
+      <span class="select small">
+        <select id="playoffSelect">
+          <option value="none">Ninguno</option>
+          <option value="final">Final (Top-4)</option>
           <option value="semis">Semifinales (Top-8)</option>
-          <option value="quarters">Cuartos (Top-8)</option>
-          <option value="final">Final directa (Top-4)</option>
+          <option value="quarters">Cuartos (Top-16)</option>
+          <option value="auto" selected>Automático</option>
         </select>
-      </label>
-
-      <span class="pill">Ronda: <span id="roundLbl">1</span></span>
+      </span>
+      <button id="createKO" class="ghost">Crear eliminatoria</button>
     </div>
   </header>
 
-  <main class="grid">
+  <main class="grid3">
     <!-- Jugadores -->
-    <section>
-      <h3>Jugadores</h3>
-
-      <div class="row gap wrap">
-        <input id="playerName1" placeholder="Jugador → Cancha 1" />
-        <button id="addP1" class="primary">Agregar C1</button>
-
-        <input id="playerName2" placeholder="Jugador → Cancha 2" />
-        <button id="addP2" class="primary">Agregar C2</button>
+    <section class="panel area-left">
+      <div class="panel-header"><h3 class="tight">Jugadores</h3></div>
+      <div class="row">
+        <input id="playerName" placeholder="Nombre del jugador" />
+        <button id="addPlayerBtn" class="primary">Agregar</button>
       </div>
-      <small class="muted">Con 2+ canchas: máximo 8 por cancha.</small>
-
-      <ul id="playersList" class="pills mt"></ul>
-
-      <button id="btnReset" class="danger mt">Reiniciar todo</button>
+      <p id="assignHint" class="muted small" style="display:none;margin-top:-8px">
+        Con 2+ canchas: asigna cada jugador a una cancha (máximo 8 por cancha).
+      </p>
+      <ul id="playersList" class="list"></ul>
+      <div class="row">
+        <button id="resetBtn" class="danger">Reiniciar todo</button>
+      </div>
     </section>
 
-    <!-- Partidos y posiciones -->
-    <section class="wide">
-      <div class="sectionHead">
-        <h3 class="tight">
-          Partidos (<span id="roundTitle">ronda 1</span>)
-        </h3>
-        <div class="row gap">
-          <button id="btnCreateBracket" class="ghost">Crear eliminatoria</button>
-          <button id="btnGen" class="primary">Generar partidos</button>
-        </div>
+    <!-- Partidos -->
+    <section class="panel area-center">
+      <div class="panel-header">
+        <h3 class="tight">Partidos (<span id="roundLabel2">1</span>)</h3>
+        <div class="muted small" id="progressInline"></div>
+        <button id="generateBtn" class="primary">Generar partidos</button>
       </div>
-
-      <div id="matches"></div>
+      <div id="matchesList" class="matches"></div>
     </section>
 
-    <aside>
-      <h3>Tabla de posiciones</h3>
-      <table id="table" class="table"></table>
-    </aside>
+    <!-- Tabla -->
+    <section class="panel area-right">
+      <div class="panel-header"><h3 class="tight">Tabla de posiciones</h3></div>
+      <table>
+        <thead>
+          <tr><th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
   </main>
-
-  <!-- Firebase (compat, opcional; si no carga, funciona local) -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-
-  <!-- Tu config (puedes dejarla así tal-cual) -->
-  <script>
-    window.firebaseConfig = {
-      apiKey: "AIzaSyDm0J5dnEavIi0ow8o9q86Zl515E1zqIY0",
-      authDomain: "padel-zac.firebaseapp.com",
-      databaseURL: "https://padel-zac-default-rtdb.firebaseio.com",
-      projectId: "padel-zac",
-      storageBucket: "padel-zac.firebasestorage.app",
-      messagingSenderId: "873811901531",
-      appId: "1:873811901531:web:3175ad146974213728d37e"
-    };
-  </script>
 
   <script src="script.js"></script>
 </body>
