@@ -1,5 +1,5 @@
 /************** CONFIG **************/
-const STORAGE_KEY  = "padel.americano.state.v17";
+const STORAGE_KEY  = "padel.americano.state.v18";
 const MAX_PER_COURT = 8;
 
 /* ===== Firebase (tus credenciales) ===== */
@@ -71,6 +71,7 @@ function loadLocal(){
 const pairKey=(a,b)=>[a,b].sort().join("|");
 const fixtureKey=(a,b,c,d)=>[pairKey(a,b), pairKey(c,d)].sort().join("_vs_");
 const rnd = (arr)=>arr.sort(()=>Math.random()-0.5);
+const isGhost = (name)=>/^comodin-\d+$/.test(name);
 
 /************** FIREBASE **************/
 function initFirebase(){
@@ -311,15 +312,36 @@ function saveResult(matchId, sA, sB){
 
 /************** ELIMINATORIA **************/
 function globalRanking(){
-  return Object.keys(state.standings)
+  // EXCLUIMOS COMODINES del ranking para seeds/bracket
+  const names = Object.keys(state.standings).filter(n=>!isGhost(n));
+  return names
     .map(name=>({name, ...state.standings[name]}))
     .sort((a,b)=> b.pts - a.pts || b.wins - a.wins || a.losses - b.losses || a.name.localeCompare(b.name))
     .map(r=>r.name);
 }
+function nonGhostPlayers(){
+  return state.players.filter(p=>!isGhost(p));
+}
+function addGhostForBracketIfNeeded(){
+  // Si hay exactamente 7 reales y NO hay comodín, ofrecer crear uno.
+  const realCount = nonGhostPlayers().length;
+  const hasGhost = state.players.some(p=>isGhost(p));
+  if(realCount===7 && !hasGhost){
+    const ok = confirm("Hay 7 jugadores. ¿Agregar comodín automáticamente?");
+    if(ok){
+      const ghost = "comodin-1";
+      if(!state.players.includes(ghost)){
+        state.players.push(ghost);
+        ensurePlayerInit(ghost);
+        state.playerCourts[ghost] = 1;
+      }
+    }
+  }
+}
 function makeTeamsFromGroup(group){
   const g = rnd(group.slice());
   const teams=[];
-  for(let i=0;i<g.length;i+=2){ if(g[i+1]) teams.push([g[i], g[i+1]]); }
+  for(let i=0;i<g.length;i+=2){ if(g[i+1]) teams.push([g[i],g[i+1]]); }
   return teams;
 }
 function createRoundFromTeams(teams, startRound){
@@ -341,11 +363,17 @@ function createRoundFromTeams(teams, startRound){
   return matches;
 }
 
-/* *** Regla AUTO actualizada: >=14 jugadores => Cuartos *** */
-function figurePlayoffModeAuto(totalPlayers){
-  if(totalPlayers>=14) return "quarters";  // 13 + comodín o 8+6, etc.
-  if(totalPlayers>=8)  return "semis";
-  if(totalPlayers>=4)  return "final";
+/* ======= REGLA AUTO (según tu tabla) =======
+   - Usa SOLO jugadores reales (excluye comodines)
+   - 0–3  => none (bloquea)
+   - 4–7  => final (Top-4)
+   - 8–11 => semis (Top-8)  [si >=9, fuerzo 2 canchas]
+   - 12+  => cuartos (Top-16)
+*/
+function figurePlayoffModeAuto(realCount){
+  if(realCount >= 12) return "quarters";
+  if(realCount >= 8)  return "semis";
+  if(realCount >= 4)  return "final";
   return "none";
 }
 
@@ -354,28 +382,38 @@ function createBracket(){
   for(let c=1;c<=state.courts;c++){
     if(!courtIsComplete(c)) return alert("Primero termina el americano en todas las canchas.");
   }
-  const ranked = globalRanking();
-  const total = ranked.length;
-  const chosen = state.playoffMode==="auto" ? figurePlayoffModeAuto(total) : state.playoffMode;
-  if(chosen==="none") return alert("Playoff desactivado. Cambia el selector a Final/Semis/Cuartos.");
+
+  addGhostForBracketIfNeeded(); // 7 jugadores → ofrecer comodín
+
+  const ranked = globalRanking();                 // SOLO reales
+  const realCount = ranked.length;
+  const autoChoice = figurePlayoffModeAuto(realCount);
+  const chosen = state.playoffMode==="auto" ? autoChoice : state.playoffMode;
+
+  if(chosen==="none") return alert("Playoff desactivado o faltan jugadores (mínimo 4 reales).");
 
   state.matches = [];
   state.phase = "bracket";
   state.locked = true;
   state.round = 1;
 
+  // Si son ≥9 reales, fuerza al menos 2 canchas para que fluya mejor
+  if(chosen==="semis" && realCount>=9 && state.courts<2) state.courts = 2;
+
   let firstRoundTeams=[];
   if(chosen==="final"){
-    if(total<4) return alert("Se requieren al menos 4 jugadores para final (Top-4).");
+    if(realCount<4) return alert("Se requieren al menos 4 jugadores reales para final.");
     firstRoundTeams = makeTeamsFromGroup(ranked.slice(0,4));   // 2 equipos → 1 partido
   }
   if(chosen==="semis"){
-    if(total<8) return alert("Se requieren al menos 8 jugadores para semifinales (Top-8).");
+    if(realCount<8) return alert("Se requieren al menos 8 jugadores reales para semifinales.");
     firstRoundTeams = makeTeamsFromGroup(ranked.slice(0,8));   // 4 equipos → 2 partidos
   }
   if(chosen==="quarters"){
-    if(total<14) return alert("Se requieren al menos 14 jugadores para cuartos (Top-16).");
-    firstRoundTeams = makeTeamsFromGroup(ranked.slice(0,16));  // 8 equipos → 4 partidos
+    if(realCount<12) return alert("Se requieren al menos 12 jugadores reales para cuartos.");
+    // Si hay 12–15 reales, tomamos Top-16 (se recortará a 8 equipos válidos)
+    const sliceTo = Math.min(16, realCount);
+    firstRoundTeams = makeTeamsFromGroup(ranked.slice(0, sliceTo));  // 8 equipos → 4 partidos
   }
   if(firstRoundTeams.length<2) return alert("No hay suficientes equipos para iniciar el playoff.");
 
@@ -449,11 +487,12 @@ function renderAdvanceToBracketButton(){
   btn.id = "advanceBracketBtn";
   btn.className = "primary";
   btn.style = "margin:8px 0;width:100%";
-  const mode = state.playoffMode==="auto" ? `Auto` :
-               state.playoffMode==="final" ? `Final` :
-               state.playoffMode==="semis" ? `Semifinales` :
-               state.playoffMode==="quarters" ? `Cuartos` : `—`;
-  btn.textContent = `Crear eliminatoria (${mode})`;
+  const realCount = nonGhostPlayers().length;
+  const autoMode = figurePlayoffModeAuto(realCount);
+  const modeText = state.playoffMode==="auto"
+    ? (autoMode==="final"?"Final":"semis"===autoMode?"Semifinales":"quarters"===autoMode?"Cuartos":"—")
+    : (state.playoffMode==="final"?"Final":state.playoffMode==="semis"?"Semifinales":state.playoffMode==="quarters"?"Cuartos":"—");
+  btn.textContent = `Crear eliminatoria (${modeText})`;
   btn.addEventListener("click", createBracket);
   matchesList.prepend(btn);
 }
