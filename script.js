@@ -344,6 +344,27 @@ function makeTeamsFromGroup(group){
   for(let i=0;i<g.length;i+=2){ if(g[i+1]) teams.push([g[i],g[i+1]]); }
   return teams;
 }
+
+/* ==== NUEVO: sembrado “justo” ==== */
+// Final (Top-4): 1–3 y 2–4  → un partido
+function seedTeamsTop4(rank){
+  if(rank.length < 4) return [];
+  return [ [rank[0], rank[2]], [rank[1], rank[3]] ];
+}
+// Semifinales (Top-8):
+// Equipos: [1–3], [5–7], [2–4], [6–8]
+// Partidos (en orden): (1–3) vs (5–7)  y  (2–4) vs (6–8)
+function seedTeamsTop8(rank){
+  if(rank.length < 8) return [];
+  const top4 = rank.slice(0,4), low4 = rank.slice(4,8);
+  return [
+    [top4[0], top4[2]],
+    [low4[0], low4[2]],
+    [top4[1], top4[3]],
+    [low4[1], low4[3]],
+  ];
+}
+
 function createRoundFromTeams(teams, startRound){
   const courts = Math.max(1,state.courts||1);
   const matches=[];
@@ -403,17 +424,20 @@ function createBracket(){
   let firstRoundTeams=[];
   if(chosen==="final"){
     if(realCount<4) return alert("Se requieren al menos 4 jugadores reales para final.");
-    firstRoundTeams = makeTeamsFromGroup(ranked.slice(0,4));   // 2 equipos → 1 partido
+    // 1–3 y 2–4
+    firstRoundTeams = seedTeamsTop4(ranked);
+    // Final directa: dos equipos → 1 partido
   }
   if(chosen==="semis"){
     if(realCount<8) return alert("Se requieren al menos 8 jugadores reales para semifinales.");
-    firstRoundTeams = makeTeamsFromGroup(ranked.slice(0,8));   // 4 equipos → 2 partidos
+    // 4 equipos con sembrado cruzado y justo
+    firstRoundTeams = seedTeamsTop8(ranked);
   }
   if(chosen==="quarters"){
     if(realCount<12) return alert("Se requieren al menos 12 jugadores reales para cuartos.");
-    // Si hay 12–15 reales, tomamos Top-16 (se recortará a 8 equipos válidos)
+    // Mantengo la lógica previa (8 equipos); luego el flujo avanza a semis y final
     const sliceTo = Math.min(16, realCount);
-    firstRoundTeams = makeTeamsFromGroup(ranked.slice(0, sliceTo));  // 8 equipos → 4 partidos
+    firstRoundTeams = makeTeamsFromGroup(ranked.slice(0, sliceTo));
   }
   if(firstRoundTeams.length<2) return alert("No hay suficientes equipos para iniciar el playoff.");
 
