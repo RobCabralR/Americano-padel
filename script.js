@@ -1,5 +1,5 @@
 /************** CONFIG **************/
-const STORAGE_KEY  = "padel.americano.state.v14";
+const STORAGE_KEY  = "padel.americano.state.v15";
 
 /* ===== Firebase ===== */
 const firebaseConfig = {
@@ -32,10 +32,11 @@ const state = {
   standings: {},
   playedWith: {},
   playedAgainst: {},
-  pairHistory: {},     // { "1": Set(pairKey) }
-  fixtureHistory: {},  // { "1": Set(fixtureKey) }
   lastPlayedRound: {},
   playedOnCourt: {},
+  // Historial para evitar repetir emparejamientos
+  pairHistory: {},     // { "1": Set("a|b") }
+  fixtureHistory: {},  // { "1": Set("a|b_vs_c|d") }
   ghostCreatedCourts: {},
   updatedAt: 0
 };
@@ -102,7 +103,7 @@ function pushCloud(){
     state.updatedAt = payload.updatedAt;
     db.ref(`/sesiones/${state.roomId}/state`).set(payload);
     persistLocal(state);
-  }, 100);
+  }, 80);
 }
 function subscribeCloud(){
   const ref = db.ref(`/sesiones/${state.roomId}/state`);
@@ -136,6 +137,7 @@ function ensurePlayerInit(name){
   if(!state.playedOnCourt[name]) state.playedOnCourt[name]={};
 }
 
+/* ===== Asignación / canchas ===== */
 function buildCourtBuckets(){
   const buckets={}; for(let c=1;c<=Math.max(1,state.courts);c++) buckets[c]=[];
   for(const p of state.players){
@@ -144,35 +146,36 @@ function buildCourtBuckets(){
   }
   return buckets;
 }
-function countOnCourt(c){ return (buildCourtBuckets()[c]||[]).length; }
-
 function canAddToCourt(court){
   const buckets = buildCourtBuckets();
   return ((buckets[court]||[]).length) < MAX_PER_COURT;
 }
-function addPlayer(name){
-  if(!canEditSetup()) return alert("Primero elige canchas y meta (juegos).");
-  const n=(name||"").trim();
-  if(!n) return alert("Escribe un nombre.");
-  if(state.players.includes(n)) return alert("Ese nombre ya existe.");
-  if(!canAddToCourt(1)) return alert("Cancha 1 llegó al máximo de 8 jugadores.");
-  state.players.push(n);
-  ensurePlayerInit(n);
-  state.playerCourts[n]=1;
-  pushCloud(); renderAll();
+
+/* ===== Combinatoria y checks ===== */
+function* combinations4(arr){
+  const n=arr.length;
+  for(let i=0;i<n-3;i++)
+    for(let j=i+1;j<n-2;j++)
+      for(let k=j+1;k<n-1;k++)
+        for(let l=k+1;l<n;l++)
+          yield [arr[i],arr[j],arr[k],arr[l]];
 }
-function removePlayer(name){
-  if(!canEditSetup()) return alert("No se puede eliminar: el americano ya inició.");
-  state.players = state.players.filter(p=>p!==name);
-  delete state.standings[name];
-  delete state.playedWith[name]; delete state.playedAgainst[name];
-  delete state.playerCourts[name]; delete state.lastPlayedRound[name];
-  delete state.playedOnCourt[name];
-  state.matches = state.matches.filter(m=> m.status==="done" || !m.pairs.flat().includes(name));
-  pushCloud(); renderAll();
+const totalPairsOnCourt = (court)=>{
+  const n = (buildCourtBuckets()[court]||[]).length;
+  return n*(n-1)/2;
+};
+const theoreticalMatchesOnCourt = (court)=>{
+  const pairs = totalPairsOnCourt(court);
+  return Math.ceil(pairs/2);
+};
+const doneMatchesOnCourt = (court)=>{
+  return state.matches.filter(m=>m.court===court && m.status==="done" && m._group===true).length;
+};
+function courtIsComplete(court){
+  return doneMatchesOnCourt(court) >= theoreticalMatchesOnCourt(court);
 }
 
-/* ——— Generación ——— */
+/* ===== Generación de grupos ===== */
 function sortedCandidatesForCourt(court){
   const assigned = (buildCourtBuckets()[court]||[]);
   return assigned
@@ -183,24 +186,15 @@ function sortedCandidatesForCourt(court){
     .sort((a,b)=>a.score-b.score)
     .map(x=>x.p);
 }
-function* combinations4(arr){
-  const n=arr.length;
-  for(let i=0;i<n-3;i++)
-    for(let j=i+1;j<n-2;j++)
-      for(let k=j+1;k<n-1;k++)
-        for(let l=k+1;l<n;l++)
-          yield [arr[i],arr[j],arr[k],arr[l]];
-}
-
-function choosePairsForCourt(players4, court){
+function choosePairsAvoidingRepeats(players4, courtStr){
   const [p1,p2,p3,p4] = players4;
   const options = [
     [[p1,p2],[p3,p4]],
     [[p1,p3],[p2,p4]],
     [[p1,p4],[p2,p3]],
   ];
-  const usedPairs   = state.pairHistory[court]   || new Set();
-  const usedFixture = state.fixtureHistory[court]|| new Set();
+  const usedPairs   = state.pairHistory[courtStr]   || new Set();
+  const usedFixture = state.fixtureHistory[courtStr]|| new Set();
 
   for (const [[a,b],[c,d]] of options){
     const pk1 = pairKey(a,b), pk2 = pairKey(c,d);
@@ -212,65 +206,53 @@ function choosePairsForCourt(players4, court){
     const fk  = fixtureKey(a,b,c,d);
     if ((!usedPairs.has(pk1) || !usedPairs.has(pk2)) && !usedFixture.has(fk)) return [[a,b],[c,d]];
   }
-  return null;
+  return options[0]; // último recurso
 }
 
-const totalPairsOnCourt = (court)=>{
-  const n = (buildCourtBuckets()[court]||[]).length;
-  return n*(n-1)/2;
-};
-const theoreticalMatchesOnCourt = (court)=>{
-  const pairs = totalPairsOnCourt(court);
-  return Math.ceil(pairs/2);
-};
-
-function updateCourtCompletionByPairs(court){
-  const seen = state.pairHistory[court] ? state.pairHistory[court].size : 0;
-  if(seen >= totalPairsOnCourt(Number(court))){
-    state.courtComplete[court] = true;
-    return true;
-  }
-  return false;
-}
-
-/* Comodín SOLO al generar partidos */
 function maybeAddGhostOnGenerate(court){
   const list = (buildCourtBuckets()[court]||[]);
-  const ghostName = `comodin-${court}`;
-  const hasGhost = state.players.includes(ghostName);
+  const ghost = `comodin-${court}`;
+  const hasGhost = state.players.includes(ghost);
   if(list.length>=5 && list.length%2===1){
     if(!hasGhost && list.length + 1 <= MAX_PER_COURT){
-      state.players.push(ghostName);
-      ensurePlayerInit(ghostName);
-      state.playerCourts[ghostName]=court;
+      state.players.push(ghost);
+      ensurePlayerInit(ghost);
+      state.playerCourts[ghost]=court;
       state.ghostCreatedCourts[String(court)] = true;
     }
   }
 }
 
-function findNextMatchForCourt(courtNum){
-  const court = String(courtNum);
-  const assigned = sortedCandidatesForCourt(courtNum);
-  if(assigned.length < 4) return null;
-  // si ya completó parejas, NO crear más
-  if(updateCourtCompletionByPairs(court)) return null;
+function findNextMatchForCourt(court){
+  const courtStr = String(court);
+  if(courtIsComplete(court)) { state.courtComplete[courtStr]=true; return null; }
 
-  const pool = assigned.slice(0, Math.min(8, assigned.length));
+  const poolBase = sortedCandidatesForCourt(court);
+  if(poolBase.length < 4) return null;
+  const pool = poolBase.slice(0, Math.min(8, poolBase.length));
+
   for(const four of combinations4(pool)){
-    const pairs = choosePairsForCourt(four, court);
+    const pairs = choosePairsAvoidingRepeats(four, courtStr);
     if(pairs){
-      const rnd = state.courtRound[court] || 1;
+      const nextRound = doneMatchesOnCourt(court) + 1; // ronda real
       return {
         id: crypto.randomUUID(),
-        round: rnd,
-        court: courtNum,
+        round: nextRound,
+        court,
         pairs,
         status: "open",
-        scoreA: 0, scoreB: 0
+        scoreA: 0, scoreB: 0,
+        _group: true
       };
     }
   }
   return null;
+}
+
+function pruneOpenIfCompleted(court){
+  if(!courtIsComplete(court)) return;
+  // elimina “open” sobrantes de esta cancha
+  state.matches = state.matches.filter(m=> !(m.court===court && m._group && m.status==="open"));
 }
 
 function generateMatchesForGroups(){
@@ -280,29 +262,34 @@ function generateMatchesForGroups(){
   for(let c=1;c<=state.courts;c++) maybeAddGhostOnGenerate(c);
 
   for(let c=1;c<=state.courts;c++){
-    const court = String(c);
-    if(updateCourtCompletionByPairs(court)) continue;
+    const courtStr = String(c);
+    if(courtIsComplete(c)){ state.courtComplete[courtStr]=true; pruneOpenIfCompleted(c); continue; }
 
-    const alreadyOpen = state.matches.some(m=>m.court===c && m.round===(state.courtRound[court]||1) && m.status==="open");
+    const alreadyOpen = state.matches.some(m=>m.court===c && m._group && m.status==="open");
     if(alreadyOpen) continue;
 
-    if(!state.courtRound[court]) state.courtRound[court]=1;
     const next = findNextMatchForCourt(c);
     if(next) state.matches.push(next);
-    else state.courtComplete[court]=true;
+    if(courtIsComplete(c)){ state.courtComplete[courtStr]=true; pruneOpenIfCompleted(c); }
   }
 
-  // actualizar ronda mostrada
-  const maxRound = Math.max(1, ...Object.values(state.courtRound).map(x=>x||1));
-  state.round = maxRound;
+  // ronda = máximo “done + open pendientes” por cancha (pero nunca > teórico)
+  let maxR = 1;
+  for(let c=1;c<=state.courts;c++){
+    const theo = theoreticalMatchesOnCourt(c);
+    const done = doneMatchesOnCourt(c);
+    const open = state.matches.some(m=>m.court===c && m._group && m.status==="open") ? 1 : 0;
+    maxR = Math.max(maxR, Math.min(theo, done + open));
+  }
+  state.round = maxR;
 
   pushCloud(); renderAll();
 
-  const allDone = Array.from({length:state.courts},(_,i)=>String(i+1)).every(k=>state.courtComplete[k]);
+  const allDone = Array.from({length:state.courts},(_,i)=>i+1).every(c=>courtIsComplete(c));
   if(allDone && state.phase==="groups") renderAdvanceToBracketButton();
 }
 
-/* Resultados */
+/* ===== Validación y guardado de resultados ===== */
 function validateScore(a,b){
   const T = Number(state.target||3);
   if(!Number.isInteger(a) || !Number.isInteger(b)) return "Marcador inválido.";
@@ -342,6 +329,7 @@ function saveResult(matchId, sA, sB){
   winner.forEach(p=>state.standings[p].wins+=1);
   loser.forEach(p=>state.standings[p].losses+=1);
 
+  // historial
   const addPair = (x,y)=>{ if(!state.pairHistory[courtKey]) state.pairHistory[courtKey]=new Set(); state.pairHistory[courtKey].add(pairKey(x,y)); };
   addPair(t1[0], t1[1]); addPair(t2[0], t2[1]);
   if(!state.fixtureHistory[courtKey]) state.fixtureHistory[courtKey]=new Set();
@@ -350,17 +338,25 @@ function saveResult(matchId, sA, sB){
   [t2[0],t2[1]].forEach(p=>{ state.playedAgainst[p].add(t1[0]); state.playedAgainst[p].add(t1[1]); state.playedWith[p].add(p===t2[0]?t2[1]:t2[0]); });
 
   if(state.phase==="groups"){
-    state.courtRound[courtKey] = (state.courtRound[courtKey]||1) + 1;
-    state.round = Math.max(state.round, state.courtRound[courtKey]);
-    updateCourtCompletionByPairs(courtKey);
+    pruneOpenIfCompleted(m.court);
 
-    if(!state.courtComplete[courtKey]){
-      const next = findNextMatchForCourt(Number(courtKey));
+    // abrir siguiente en esa cancha (si cabe)
+    if(!courtIsComplete(m.court)){
+      const next = findNextMatchForCourt(m.court);
       if(next) state.matches.push(next);
-      else state.courtComplete[courtKey]=true;
     }
 
-    const allDone = Array.from({length:state.courts},(_,i)=>String(i+1)).every(k=>state.courtComplete[k]);
+    // recálculo de ronda global (cap al teórico)
+    let maxR = 1;
+    for(let c=1;c<=state.courts;c++){
+      const theo = theoreticalMatchesOnCourt(c);
+      const done = doneMatchesOnCourt(c);
+      const open = state.matches.some(mm=>mm.court===c && mm._group && mm.status==="open") ? 1 : 0;
+      maxR = Math.max(maxR, Math.min(theo, done + open));
+    }
+    state.round = maxR;
+
+    const allDone = Array.from({length:state.courts},(_,i)=>i+1).every(c=>courtIsComplete(c));
     if(allDone){ renderAdvanceToBracketButton(); }
   }else{
     advanceBracketIfReady();
@@ -370,55 +366,51 @@ function saveResult(matchId, sA, sB){
 }
 
 /************** ELIMINATORIA **************/
-const nearestPow2 = (n)=>{ const p=[2,4,8,16,32]; for(let i=p.length-1;i>=0;i--){ if(p[i]<=n) return p[i]; } return 2; };
+/* Ranking global de jugadores */
 function globalRanking(){
   return Object.keys(state.standings)
     .map(name=>({name, ...state.standings[name]}))
     .sort((a,b)=> b.pts - a.pts || b.wins - a.wins || a.losses - b.losses || a.name.localeCompare(b.name))
     .map(r=>r.name);
 }
+const rnd = (arr)=>arr.sort(()=>Math.random()-0.5);
 
-/* NUEVO: formar equipos balanceados Top4 vs Bottom4 y emparejar semis */
+/* NUEVO: semis “Top vs Top” y “Bottom vs Bottom”, con equipos armados al azar dentro de cada mitad. */
 function buildBracketRound1Matches(){
   const ranked = globalRanking();
-  const maxTeams = nearestPow2(Math.floor(ranked.length / 2));
-  if(maxTeams < 2) return [];
+  if(ranked.length < 8) return []; // se requiere al menos 8 para el formato solicitado
 
-  const takePlayers = maxTeams * 2;
-  const selected    = ranked.slice(0, takePlayers);
-
-  // dividir mitad superior e inferior
-  const half = takePlayers/2;
-  const top = selected.slice(0, half);          // Top N
-  const bot = selected.slice(half);             // Bottom N
-  bot.reverse();                                // [peor … menos peor]
-
-  // equipos balanceados: (top[i], bot[i])
-  const teams = [];
-  for(let i=0;i<half;i++) teams.push([ top[i], bot[i] ]);
-
-  // Semis/cuadros balanceados:
-  // si hay 4 equipos → semis: t0 vs t3  y  t1 vs t2
-  // si hay 8 → cuartos: (t0 vs t7), (t1 vs t6), (t2 vs t5), (t3 vs t4)
-  const mkPairsIndex = (N)=>{
-    const idx=[];
-    for(let i=0;i<N/2;i++) idx.push([i, N-1-i]);
-    return idx;
-  };
-  const firstRoundIndex = mkPairsIndex(teams.length);
+  // Tomo bloques de 8 (si hay 16, serán dos mitades consecutivas)
+  const take = Math.floor(ranked.length/8)*8 || 8; // al menos 8
+  const selected = ranked.slice(0,take);
 
   const matches = [];
-  for(let i=0;i<firstRoundIndex.length;i++){
-    const [a,b] = firstRoundIndex[i];
-    const t1 = teams[a], t2 = teams[b];
-    matches.push({
-      id: crypto.randomUUID(),
-      round: 1,
-      court: (i%Math.max(1,state.courts||1))+1,
-      pairs: [t1, t2],
-      status: "open",
-      scoreA: 0,
-      scoreB: 0
+  const courts = Math.max(1, state.courts||1);
+  for(let offset=0; offset<selected.length; offset+=8){
+    const block = selected.slice(offset, offset+8);
+    const top4 = rnd(block.slice(0,4));
+    const bot4 = rnd(block.slice(4,8));
+
+    // equipos dentro de cada mitad (aleatorio)
+    const topTeams = [ [top4[0],top4[1]], [top4[2],top4[3]] ];
+    const botTeams = [ [bot4[0],bot4[1]], [bot4[2],bot4[3]] ];
+
+    // Semifinales: Top vs Top y Bottom vs Bottom
+    const semis = [
+      [ topTeams[0], topTeams[1] ],
+      [ botTeams[0], botTeams[1] ],
+    ];
+
+    semis.forEach((pairs, i)=>{
+      matches.push({
+        id: crypto.randomUUID(),
+        round: 1,
+        court: (i % courts) + 1,
+        pairs,
+        status: "open",
+        scoreA: 0, scoreB: 0,
+        _group: false
+      });
     });
   }
   return matches;
@@ -426,8 +418,13 @@ function buildBracketRound1Matches(){
 
 function createBracket(){
   if(state.phase!=="groups") return;
+  // todas las canchas deben estar completas
+  for(let c=1;c<=state.courts;c++){
+    if(!courtIsComplete(c)) return alert("Primero termina el americano en todas las canchas.");
+  }
+
   const firstRound = buildBracketRound1Matches();
-  if(firstRound.length===0){ alert("No hay suficientes jugadores para eliminatoria."); return; }
+  if(firstRound.length===0){ alert("No hay suficientes jugadores para eliminatoria (mínimo 8)."); return; }
 
   state.matches = [];
   state.phase = "bracket";
@@ -446,7 +443,7 @@ function createBracket(){
 
 function advanceBracketIfReady(){
   if(state.phase!=="bracket") return;
-  const current = state.matches.filter(m=>m.round===state.round);
+  const current = state.matches.filter(m=>m.round===state.round && !m._group);
   if(current.length===0) return;
   if(current.some(m=>m.status!=="done")) return;
 
@@ -454,17 +451,18 @@ function advanceBracketIfReady(){
   if(winners.length===1){ return; } // campeón
 
   const nextMatches = [];
+  const courts = Math.max(1,state.courts||1);
   for(let i=0;i<winners.length;i+=2){
     const t1 = winners[i], t2 = winners[i+1];
     if(!t1 || !t2) continue;
     nextMatches.push({
       id: crypto.randomUUID(),
       round: state.round+1,
-      court: (i%Math.max(1,state.courts||1))+1,
+      court: (i % courts) + 1,
       pairs: [t1, t2],
       status: "open",
-      scoreA: 0,
-      scoreB: 0
+      scoreA: 0, scoreB: 0,
+      _group: false
     });
   }
   state.round += 1;
@@ -511,10 +509,9 @@ function renderProgressSummary(){
   box.className = "muted";
   let lines = [];
   for(let c=1;c<=Math.max(1,state.courts||1);c++){
-    const totalPairs = totalPairsOnCourt(c);
-    const seen = state.pairHistory[String(c)] ? state.pairHistory[String(c)].size : 0;
     const theo = theoreticalMatchesOnCourt(c);
-    lines.push(`Cancha ${c}: parejas ${seen}/${totalPairs} · partidos teóricos ${theo}`);
+    const done = doneMatchesOnCourt(c);
+    lines.push(`Cancha ${c}: partidos ${done}/${theo}`);
   }
   box.textContent = lines.join("  |  ");
   return box;
@@ -537,8 +534,7 @@ function renderMatches(){
 
   if(state.phase==="groups"){
     for(let c=1;c<=Math.max(1,state.courts||1);c++){
-      const court = String(c);
-      if(state.courtComplete[court]){
+      if(courtIsComplete(c)){
         const note = document.createElement("div");
         note.className = "muted";
         note.textContent = `Cancha ${c}: americano completado`;
@@ -550,10 +546,10 @@ function renderMatches(){
   const openList = state.matches.filter(m=> m.status==="open").sort((a,b)=>a.court-b.court);
   const list = state.phase==="groups"
     ? openList
-    : state.matches.filter(m=> m.round===state.round).sort((a,b)=>a.court-b.court);
+    : state.matches.filter(m=> m.round===state.round && !m._group).sort((a,b)=>a.court-b.court);
 
   if(state.phase==="groups"){
-    const allDone = Array.from({length:state.courts},(_,i)=>String(i+1)).every(k=>state.courtComplete[k]);
+    const allDone = Array.from({length:state.courts},(_,i)=>i+1).every(c=>courtIsComplete(c));
     if(allDone || openList.length===0){ renderAdvanceToBracketButton(); }
   }
 
@@ -616,22 +612,10 @@ function renderTable(){
   });
 }
 
-function cappedRoundForDisplay(){
-  if(state.phase!=="groups") return state.round;
-  // ronda mostrada = min(ronda real, partidos teóricos más altos entre canchas)
-  let cap = 1;
-  for(let c=1;c<=Math.max(1,state.courts||1);c++){
-    cap = Math.max(cap, theoreticalMatchesOnCourt(c));
-  }
-  return Math.min(state.round || 1, cap);
-}
-
 function renderAll(){
-  const lbl = cappedRoundForDisplay();
-  roundLabel.textContent= String(lbl);
-  roundLabel2.textContent= String(lbl);
+  roundLabel.textContent= String(state.round||1);
+  roundLabel2.textContent= String(state.round||1);
   roomIdTxt.textContent = state.roomId || "—";
-
   generateBtn.style.display = (state.phase === "bracket") ? "none" : "inline-block";
   renderPlayers(); renderMatches(); renderTable();
 }
@@ -669,8 +653,19 @@ document.addEventListener("DOMContentLoaded", ()=>{
     pushCloud(); renderAll();
   });
 
-  addPlayerBtn.addEventListener("click", ()=>{ addPlayer(playerName.value); playerName.value=""; playerName.focus(); });
-  playerName.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ addPlayer(playerName.value); playerName.value=""; } });
+  addPlayerBtn.addEventListener("click", ()=>{
+    if(!canEditSetup()) return alert("Primero elige canchas y meta (juegos).");
+    const n=(playerName.value||"").trim();
+    if(!n) return;
+    if(state.players.includes(n)) return alert("Ese nombre ya existe.");
+    if(!canAddToCourt(1)) return alert("Cancha 1 llegó al máximo de 8 jugadores.");
+    state.players.push(n);
+    ensurePlayerInit(n);
+    state.playerCourts[n]=1;
+    playerName.value="";
+    pushCloud(); renderAll();
+  });
+  playerName.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ addPlayerBtn.click(); } });
 
   generateBtn.addEventListener("click", ()=>{ if(state.phase==="groups") generateMatchesForGroups(); });
 
