@@ -351,19 +351,23 @@ function seedTeamsTop4(rank){
   if(rank.length < 4) return [];
   return [ [rank[0], rank[2]], [rank[1], rank[3]] ];
 }
-// Semifinales (Top-8):
-// Equipos: [1–3], [5–7], [2–4], [6–8]
-// Partidos (en orden): (1–3) vs (5–7)  y  (2–4) vs (6–8)
+// Semifinales (Top-8) — corregido:
+// Equipos: [1–3], [2–4], [5–7], [6–8]
+// Partidos: (1–3) vs (2–4)  y  (5–7) vs (6–8)
 function seedTeamsTop8(rank){
-  if(rank.length < 8) return [];
-  const top4 = rank.slice(0,4), low4 = rank.slice(4,8);
+  if (rank.length < 8) return [];
+  const top4 = rank.slice(0, 4);
+  const low4 = rank.slice(4, 8);
+  // MUY IMPORTANTE: el orden en el array define cómo se emparejan:
+  // createRoundFromTeams empareja [0] vs [1] y [2] vs [3]
   return [
-    [top4[0], top4[2]],
-    [low4[0], low4[2]],
-    [top4[1], top4[3]],
-    [low4[1], low4[3]],
+    [top4[0], top4[2]], // 1–3
+    [top4[1], top4[3]], // 2–4
+    [low4[0], low4[2]], // 5–7
+    [low4[1], low4[3]], // 6–8
   ];
 }
+
 
 function createRoundFromTeams(teams, startRound){
   const courts = Math.max(1,state.courts||1);
