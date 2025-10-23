@@ -12,8 +12,6 @@ h3{margin:0 0 .6rem}
 .mt{margin-top:.6rem}
 .muted{color:var(--muted)}
 .wrap{flex-wrap:wrap}
-.tight{margin:0}
-
 .topbar{
   display:flex;align-items:center;justify-content:space-between;
   padding:.7rem 1rem;border-bottom:1px solid var(--line);
@@ -23,7 +21,6 @@ h3{margin:0 0 .6rem}
 .pillrow{display:flex;gap:.5rem;align-items:center}
 .select select{background:var(--pill);color:var(--txt);border:0;padding:.2rem .4rem;border-radius:6px}
 .select.small{font-size:.9rem}
-
 .grid{
   display:grid;gap:1rem;padding:1rem;
   grid-template-columns: 280px minmax(440px,1fr) 420px;
@@ -33,7 +30,6 @@ section,aside{
 }
 .row{display:flex;align-items:center}
 .gap{gap:.5rem}
-
 button{
   background:var(--pill);border:1px solid var(--line);
   color:var(--txt);border-radius:8px;padding:.45rem .7rem;cursor:pointer
@@ -45,7 +41,6 @@ input{
   background:#0f1923;border:1px solid var(--line);color:var(--txt);
   border-radius:8px;padding:.45rem .6rem;min-width:180px
 }
-
 .pills{list-style:none;margin:.6rem 0 0;padding:0;display:flex;flex-direction:column;gap:.35rem}
 .pills li{
   display:flex;align-items:center;justify-content:space-between;
@@ -53,13 +48,11 @@ input{
 }
 .pills .left{display:flex;gap:.4rem;align-items:center}
 .badge{background:var(--pill);border:1px solid var(--line);padding:.05rem .45rem;border-radius:999px;color:var(--muted)}
-
 .sectionHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem}
 
 /* match card compact */
 .card{
-  background:#0f1923;border:1px solid var(--line);border-radius:12px;margin-bottom:.6rem;
-  padding:.6rem .6rem
+  background:#0f1923;border:1px solid var(--line);border-radius:12px;margin-bottom:.6rem;padding:.6rem .6rem
 }
 .meta{color:var(--muted);margin-bottom:.3rem}
 .vs{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
