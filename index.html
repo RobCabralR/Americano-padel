@@ -5,104 +5,136 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Americano Padel</title>
   <link rel="stylesheet" href="style.css"/>
+  <style>
+    /* Ajustes mínimos para el layout por cancha sin tocar tu style.css */
+    .topbar{display:flex;gap:.6rem;align-items:center;justify-content:space-between;padding:.6rem 1rem;border-bottom:1px solid var(--line)}
+    .pillrow{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+    .select select{background:var(--pill);color:var(--txt);border:0;padding:.25rem .5rem;border-radius:6px}
+    .grid-outer{display:flex;flex-direction:column;gap:1rem;padding:1rem}
+    .court-row{display:grid;gap:1rem;grid-template-columns:280px minmax(520px,1fr) 420px}
+    .sectionHead{display:flex;align-items:center;justify-content:space-between;margin:.25rem 0 .6rem}
+    .card{background:#0f1923;border:1px solid var(--line);border-radius:12px;margin-bottom:.6rem;padding:.6rem}
+    .pills{list-style:none;margin:.4rem 0 0;padding:0;display:flex;flex-direction:column;gap:.35rem}
+    .pills li{display:flex;align-items:center;justify-content:space-between;background:#0f1923;border:1px solid var(--line);border-radius:10px;padding:.35rem .5rem}
+    .left{display:flex;gap:.4rem;align-items:center}
+    .badge{background:var(--pill);border:1px solid var(--line);padding:.05rem .45rem;border-radius:999px;color:var(--muted)}
+    .tag{border:1px solid var(--line);background:var(--pill);border-radius:999px;padding:.15rem .45rem}
+    .mark{display:flex;align-items:center;gap:.35rem;margin-left:auto}
+    input.score{width:44px;text-align:center;background:#06121d;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:.25rem .2rem}
+    .muted{color:var(--muted)}
+    .hidden{display:none!important}
+    table.table{width:100%;border-collapse:collapse}
+    .table th,.table td{border-bottom:1px solid var(--line);padding:.35rem .5rem;text-align:left}
+  </style>
 </head>
 <body>
   <!-- Topbar -->
-  <header class="topbar">
+  <div class="topbar">
     <div class="pillrow">
-      <span class="pill">Sala: <span id="roomCode">—</span></span>
+      <span class="pill">Sala: <span id="roomCode"></span></span>
       <button id="copyRoom" class="ghost">Copiar</button>
     </div>
-
-    <div class="pillrow select small">
-      <label class="muted">Canchas:</label>
-      <select id="courtsSelect">
-        <option value="1">1</option>
-        <option value="2">2</option>
-      </select>
-    </div>
-
-    <div class="pillrow select small">
-      <label class="muted">Meta:</label>
-      <select id="targetSelect">
-        <option value="3">3</option>
-        <option value="4">4</option>
-        <option value="6">6</option>
-      </select>
-    </div>
-
-    <div class="pillrow select small">
-      <label class="muted">Playoff:</label>
-      <select id="playoffMode">
-        <option value="auto">Automático</option>
-        <option value="semis8">Semifinales (Top-8)</option>
-        <option value="quarters8">Cuartos (Top-8)</option>
-      </select>
-    </div>
-
     <div class="pillrow">
-      <span class="pill">Ronda: <span id="roundBadge">1</span></span>
+      <label class="select"><span class="muted">Canchas:</span>
+        <select id="courtsSelect">
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+      </label>
+      <label class="select"><span class="muted">Meta:</span>
+        <select id="goalSelect">
+          <option value="3" selected>3</option>
+          <option value="6">6</option>
+        </select>
+      </label>
+      <label class="select"><span class="muted">Playoff:</span>
+        <select id="playoffSelect">
+          <option value="auto">Automático</option>
+          <option value="none">Sin playoff</option>
+        </select>
+      </label>
+      <span class="pill">Ronda: <span id="globalRound">1</span></span>
     </div>
-  </header>
+  </div>
 
-  <!-- Layout -->
-  <div class="grid">
-    <!-- Jugadores -->
-    <section>
-      <h3>Jugadores</h3>
-      <div class="row gap mt">
-        <input id="playerInput" placeholder="Nombre del jugador"/>
-        <button id="addPlayerBtn">Agregar</button>
-      </div>
-      <p class="muted mt">Con 2+ canchas: asigna cada jugador a una cancha (máximo 8 por cancha).</p>
-      <ul id="playersList" class="pills mt"></ul>
-      <button id="resetBtn" class="danger mt">Reiniciar todo</button>
-    </section>
+  <!-- Contenedor principal -->
+  <div class="grid-outer" id="app">
 
-    <!-- Partidos -->
-    <section>
-      <div class="sectionHead">
-        <h3 id="roundTitle">Partidos (ronda 1)</h3>
+    <!-- ====== Cancha 1 ====== -->
+    <div class="court-row" id="row-c1">
+      <!-- Jugadores -->
+      <section>
+        <div class="sectionHead"><h3>Jugadores — Cancha 1</h3></div>
         <div class="row gap">
-          <button id="genBtn" class="primary">Generar partidos</button>
+          <input id="playerInput1" placeholder="Nombre del jugador"/>
+          <button id="addPlayer1">Agregar</button>
         </div>
-      </div>
+        <p class="muted">Máximo 8 por cancha. Cada jugador debe estar asignado a su cancha.</p>
+        <ul id="playersList1" class="pills"></ul>
+        <button id="reset1" class="danger mt">Reiniciar cancha 1</button>
+      </section>
 
-      <!-- Banner para crear eliminatoria -->
-      <button id="playoffBtn" class="primary" style="width:100%;display:none">Crear eliminatoria</button>
+      <!-- Partidos -->
+      <section>
+        <div class="sectionHead">
+          <h3>Partidos (cancha 1) — <span class="muted">solo 1 abierto a la vez</span></h3>
+          <button id="gen1" class="primary">Generar partidos</button>
+        </div>
+        <div id="matches1"></div>
+      </section>
 
-      <!-- Lista de partidos (una sola, el generador ya separa por cancha) -->
-      <div id="matches"></div>
-    </section>
-
-    <!-- Tablas de posiciones -->
-    <aside>
-      <h3>Tabla de posiciones</h3>
-
-      <div class="row gap wrap mt">
-        <span class="badge">Cancha 1</span>
-      </div>
-      <table class="table mt" id="tableC1">
-        <thead>
-          <tr>
+      <!-- Tabla -->
+      <aside>
+        <div class="sectionHead"><h3>Tabla de posiciones — Cancha 1</h3></div>
+        <table class="table">
+          <thead><tr>
             <th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+          </tr></thead>
+          <tbody id="table1"></tbody>
+        </table>
+      </aside>
+    </div>
 
-      <div class="row gap wrap mt" id="c2Head" style="display:none">
-        <span class="badge">Cancha 2</span>
-      </div>
-      <table class="table mt" id="tableC2" style="display:none">
-        <thead>
-          <tr>
+    <!-- ====== Cancha 2 ====== -->
+    <div class="court-row hidden" id="row-c2">
+      <!-- Jugadores -->
+      <section>
+        <div class="sectionHead"><h3>Jugadores — Cancha 2</h3></div>
+        <div class="row gap">
+          <input id="playerInput2" placeholder="Nombre del jugador"/>
+          <button id="addPlayer2">Agregar</button>
+        </div>
+        <p class="muted">Máximo 8 por cancha. Cada jugador debe estar asignado a su cancha.</p>
+        <ul id="playersList2" class="pills"></ul>
+        <button id="reset2" class="danger mt">Reiniciar cancha 2</button>
+      </section>
+
+      <!-- Partidos -->
+      <section>
+        <div class="sectionHead">
+          <h3>Partidos (cancha 2) — <span class="muted">solo 1 abierto a la vez</span></h3>
+          <button id="gen2" class="primary">Generar partidos</button>
+        </div>
+        <div id="matches2"></div>
+      </section>
+
+      <!-- Tabla -->
+      <aside>
+        <div class="sectionHead"><h3>Tabla de posiciones — Cancha 2</h3></div>
+        <table class="table">
+          <thead><tr>
             <th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </aside>
+          </tr></thead>
+          <tbody id="table2"></tbody>
+        </table>
+      </aside>
+    </div>
+
+    <!-- Botón de playoff por canchas (cuartos/semis basado en posiciones por cancha) -->
+    <div id="playoffBar" class="hidden">
+      <button id="buildPlayoff" class="primary">Crear eliminatoria (Cuartos / Semis por cancha)</button>
+    </div>
+
   </div>
 
   <script src="script.js"></script>
