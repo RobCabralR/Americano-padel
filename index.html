@@ -1,100 +1,109 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Americano Padel</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-  <style>
-    :root{--bg:#0f1420;--panel:#121a28;--line:#263347;--text:#e6eefc;--muted:#93a7c3;--accent:#4ea3ff;}
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
-    header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
-    h1{margin:0;font-size:18px}
-    .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    select,input,button{background:#0c121e;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:7px 10px;font:inherit}
-    button.primary{background:var(--accent);color:#00152b;border:0;font-weight:600}
-    button:disabled{opacity:.6}
-    main{display:grid;grid-template-columns:330px 1fr 520px;gap:10px;padding:10px}
-    @media (max-width:1200px){main{grid-template-columns:1fr}}
-    .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
-    .titleRow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-    .title{font-weight:600} .muted{color:var(--muted);font-size:12px}
-    ul.players{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
-    ul.players li{display:flex;align-items:center;gap:8px;background:#0c121e;border:1px solid var(--line);padding:6px 8px;border-radius:10px}
-    ul.players li .x{cursor:pointer;opacity:.8}
-    .badge{border:1px solid var(--line);padding:2px 8px;border-radius:999px;display:inline-flex;gap:6px;align-items:center}
-    .match{border:1px solid var(--line);border-radius:12px;padding:8px;margin:6px 0;background:#0c121e}
-    .row{display:flex;gap:8px;align-items:center}
-    .teams{display:flex;gap:10px;align-items:center;margin:6px 0}
-    .vs{opacity:.7} .pcourt{width:56px} .pill{padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:#0c121e}
-    table{width:100%;border-collapse:collapse} th,td{padding:8px;border-bottom:1px solid var(--line);font-size:14px} th{text-align:left;color:#a9bfda}
-  </style>
-  <!-- Firebase compat -->
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <header>
-    <h1>Gestión de Jornada</h1>
-    <div class="bar">
-      <span class="pill">Sala: <strong id="roomIdTxt">—</strong></span>
-      <button id="copyRoomBtn">Copiar</button>
-      <label>Canchas:</label>
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="pillrow">
+      <span class="pill">Sala: <span id="roomCode">—</span></span>
+      <button id="copyRoom" class="ghost">Copiar</button>
+    </div>
+
+    <div class="pillrow select small">
+      <label class="muted">Canchas:</label>
       <select id="courtsSelect">
-        <option value="" selected>—</option>
-        <option value="1">1</option><option value="2">2</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
       </select>
-      <label>Meta:</label>
+    </div>
+
+    <div class="pillrow select small">
+      <label class="muted">Meta:</label>
       <select id="targetSelect">
-        <option value="" selected>—</option>
-        <option value="3">3</option><option value="4">4</option><option value="6">6</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="6">6</option>
       </select>
-      <label>Playoff:</label>
-      <select id="playoffSelect">
-        <option value="none">Ninguno</option>
-        <option value="final">Final (Top-4)</option>
-        <option value="semis">Semifinales (Top-8)</option>
-        <option value="quarters">Cuartos (Top-16)</option>
-        <option value="auto" selected>Automático</option>
+    </div>
+
+    <div class="pillrow select small">
+      <label class="muted">Playoff:</label>
+      <select id="playoffMode">
+        <option value="auto">Automático</option>
+        <option value="semis8">Semifinales (Top-8)</option>
+        <option value="quarters8">Cuartos (Top-8)</option>
       </select>
-      <span class="pill">Ronda: <strong id="roundLabel">1</strong></span>
+    </div>
+
+    <div class="pillrow">
+      <span class="pill">Ronda: <span id="roundBadge">1</span></span>
     </div>
   </header>
 
-  <main>
+  <!-- Layout -->
+  <div class="grid">
     <!-- Jugadores -->
-    <section class="card">
-      <div class="titleRow"><div class="title">Jugadores</div></div>
-      <div class="row" style="margin-bottom:6px">
-        <input id="playerName" placeholder="Nombre del jugador" />
+    <section>
+      <h3>Jugadores</h3>
+      <div class="row gap mt">
+        <input id="playerInput" placeholder="Nombre del jugador"/>
         <button id="addPlayerBtn">Agregar</button>
       </div>
-      <p id="assignHint" class="muted" style="display:none;margin-top:0;">Con 2+ canchas: asigna cada jugador a una cancha (máximo 8 por cancha).</p>
-      <ul id="playersList" class="players" style="margin-top:8px"></ul>
-      <button id="resetBtn" style="margin-top:8px">Reiniciar todo</button>
+      <p class="muted mt">Con 2+ canchas: asigna cada jugador a una cancha (máximo 8 por cancha).</p>
+      <ul id="playersList" class="pills mt"></ul>
+      <button id="resetBtn" class="danger mt">Reiniciar todo</button>
     </section>
 
     <!-- Partidos -->
-    <section class="card">
-      <div class="titleRow">
-        <div class="title">Partidos (ronda <span id="roundLabel2">1</span>)</div>
-        <div class="muted" id="progressInline"></div>
-        <div style="margin-left:auto"></div>
-        <button id="generateBtn" class="primary">Generar partidos</button>
+    <section>
+      <div class="sectionHead">
+        <h3 id="roundTitle">Partidos (ronda 1)</h3>
+        <div class="row gap">
+          <button id="genBtn" class="primary">Generar partidos</button>
+        </div>
       </div>
-      <div id="matchesList"></div>
+
+      <!-- Banner para crear eliminatoria -->
+      <button id="playoffBtn" class="primary" style="width:100%;display:none">Crear eliminatoria</button>
+
+      <!-- Lista de partidos (una sola, el generador ya separa por cancha) -->
+      <div id="matches"></div>
     </section>
 
-    <!-- Tabla -->
-    <section class="card">
-      <div class="titleRow"><div class="title">Tabla de posiciones</div></div>
-      <table>
-        <thead><tr><th>#</th><th>Jugador</th><th>Pts</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th></tr></thead>
-        <tbody id="tbody"></tbody>
+    <!-- Tablas de posiciones -->
+    <aside>
+      <h3>Tabla de posiciones</h3>
+
+      <div class="row gap wrap mt">
+        <span class="badge">Cancha 1</span>
+      </div>
+      <table class="table mt" id="tableC1">
+        <thead>
+          <tr>
+            <th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
       </table>
-    </section>
-  </main>
+
+      <div class="row gap wrap mt" id="c2Head" style="display:none">
+        <span class="badge">Cancha 2</span>
+      </div>
+      <table class="table mt" id="tableC2" style="display:none">
+        <thead>
+          <tr>
+            <th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </aside>
+  </div>
 
   <script src="script.js"></script>
 </body>
