@@ -7,13 +7,14 @@
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
+  <!-- Topbar -->
   <header class="topbar">
     <div class="pillrow">
       <span class="pill">Sala: <span id="roomCode">—</span></span>
       <button id="copyRoom" class="ghost">Copiar</button>
     </div>
 
-    <div class="pillrow">
+    <div class="pillrow select small">
       <label class="muted">Canchas:</label>
       <select id="courtsSelect">
         <option value="1">1</option>
@@ -21,20 +22,22 @@
       </select>
     </div>
 
-    <div class="pillrow">
+    <div class="pillrow select small">
       <label class="muted">Meta:</label>
-      <select id="goalSelect">
-        <option value="3" selected>3</option>
+      <select id="targetSelect">
+        <option value="3">3</option>
         <option value="4">4</option>
         <option value="6">6</option>
       </select>
     </div>
 
-    <div class="pillrow">
+    <div class="pillrow select small">
       <label class="muted">Playoff:</label>
-      <select id="playoffSelect">
-        <option value="auto" selected>Automático</option>
-        <option value="semis">Semifinales por cancha</option>
+      <select id="playoffMode">
+        <option value="auto">Automático</option>
+        <option value="semis">Semifinales (Top-8)</option>
+        <option value="cuartos">Cuartos (Top-12)</option>
+        <option value="off">Manual</option>
       </select>
     </div>
 
@@ -43,75 +46,81 @@
     </div>
   </header>
 
-  <!-- CANCHA 1 -->
-  <div class="grid" id="court1Grid">
-    <section>
-      <div class="sectionHead">
-        <h3>Jugadores — Cancha 1</h3>
-        <button class="danger" id="resetC1">Reiniciar cancha 1</button>
+  <!-- GRID -->
+  <main class="grid">
+
+    <!-- Jugadores — Cancha 1 -->
+    <section id="playersC1">
+      <h3>Jugadores — Cancha 1</h3>
+      <div class="row gap mt">
+        <input id="nameInputC1" placeholder="Nombre del jugador"/>
+        <button id="addBtnC1">Agregar</button>
       </div>
-      <div class="row gap">
-        <input id="nameC1" placeholder="Nombre del jugador"/>
-        <button id="addC1">Agregar</button>
-      </div>
-      <p class="muted tight">Máximo 8 por cancha. Cada jugador debe estar asignado a su cancha.</p>
-      <ul id="listC1" class="pills"></ul>
+      <p class="muted mt">Máximo 8 por cancha. Cada jugador debe estar asignado a su cancha.</p>
+      <ul id="listC1" class="pills mt"></ul>
+      <button id="resetC1" class="danger mt">Reiniciar cancha 1</button>
     </section>
 
-    <section>
-      <div class="sectionHead">
-        <h3>Partidos (cancha 1) — <span class="muted">solo 1 abierto a la vez</span></h3>
-        <button id="genC1" class="primary">Generar partidos</button>
+    <!-- Partidos — Cancha 1 -->
+    <section id="matchesC1">
+      <h3>Partidos (cancha 1) — <span class="muted">solo 1 abierto a la vez</span></h3>
+      <div id="c1Meta" class="meta">Pendientes: 0 partidos</div>
+      <div id="openMatchC1"></div>
+      <div class="row gap mt">
+        <button id="genBtnC1" class="primary">Generar partidos</button>
+        <div id="elimsC1" class="mt"></div>
       </div>
-      <div id="matchesC1"></div>
-      <div id="playoffC1" class="mt"></div>
     </section>
 
+    <!-- Tabla — Cancha 1 -->
     <aside>
       <h3>Tabla de posiciones — Cancha 1</h3>
-      <table class="table">
+      <table class="table mt" id="tableC1">
         <thead>
-          <tr><th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th></tr>
+          <tr>
+            <th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th>
+          </tr>
         </thead>
-        <tbody id="tableC1"></tbody>
+        <tbody></tbody>
       </table>
     </aside>
-  </div>
 
-  <!-- CANCHA 2 -->
-  <div class="grid" id="court2Grid" style="display:none">
-    <section>
-      <div class="sectionHead">
-        <h3>Jugadores — Cancha 2</h3>
-        <button class="danger" id="resetC2">Reiniciar cancha 2</button>
+    <!-- Jugadores — Cancha 2 -->
+    <section id="playersC2">
+      <h3>Jugadores — Cancha 2</h3>
+      <div class="row gap mt">
+        <input id="nameInputC2" placeholder="Nombre del jugador"/>
+        <button id="addBtnC2">Agregar</button>
       </div>
-      <div class="row gap">
-        <input id="nameC2" placeholder="Nombre del jugador"/>
-        <button id="addC2">Agregar</button>
-      </div>
-      <p class="muted tight">Máximo 8 por cancha. Cada jugador debe estar asignado a su cancha.</p>
-      <ul id="listC2" class="pills"></ul>
+      <p class="muted mt">Máximo 8 por cancha. Cada jugador debe estar asignado a su cancha.</p>
+      <ul id="listC2" class="pills mt"></ul>
+      <button id="resetC2" class="danger mt">Reiniciar cancha 2</button>
     </section>
 
-    <section>
-      <div class="sectionHead">
-        <h3>Partidos (cancha 2) — <span class="muted">solo 1 abierto a la vez</span></h3>
-        <button id="genC2" class="primary">Generar partidos</button>
+    <!-- Partidos — Cancha 2 -->
+    <section id="matchesC2">
+      <h3>Partidos (cancha 2) — <span class="muted">solo 1 abierto a la vez</span></h3>
+      <div id="c2Meta" class="meta">Pendientes: 0 partidos</div>
+      <div id="openMatchC2"></div>
+      <div class="row gap mt">
+        <button id="genBtnC2" class="primary">Generar partidos</button>
+        <div id="elimsC2" class="mt"></div>
       </div>
-      <div id="matchesC2"></div>
-      <div id="playoffC2" class="mt"></div>
     </section>
 
+    <!-- Tabla — Cancha 2 -->
     <aside>
       <h3>Tabla de posiciones — Cancha 2</h3>
-      <table class="table">
+      <table class="table mt" id="tableC2">
         <thead>
-          <tr><th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th></tr>
+          <tr>
+            <th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th>
+          </tr>
         </thead>
-        <tbody id="tableC2"></tbody>
+        <tbody></tbody>
       </table>
     </aside>
-  </div>
+  </main>
 
   <script src="script.js"></script>
 </body>
