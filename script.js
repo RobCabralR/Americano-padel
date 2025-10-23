@@ -1,410 +1,345 @@
+/*********************************************************
+ *  Americano Padel – módulo UI + Eliminatorias
+ *  NOTAS:
+ *  - Conecta los stubs a tus funciones existentes.
+ *  - Mantiene 1 partido abierto por cancha.
+ *  - Valida marcador con la "meta".
+ **********************************************************/
+
 /* =========================
-   Estado de la aplicación
+   ESTADO BÁSICO (puedes reutilizar el tuyo)
    ========================= */
 
 const state = {
-  meta: 3,                  // meta de juegos
-  courts: 1,                // 1 ó 2
-  room: '',                 // solo visual
-  roundC1: 1,               // ronda visual (por cancha)
-  roundC2: 1,
-
-  // jugadores por cancha (array de strings)
+  // ejemplo de listas de jugadores por cancha (reemplaza por tu fuente real)
   players: {
-    1: [],  // cancha 1
-    2: []   // cancha 2
-  },
-
-  // Tabla por cancha: { id: {name, pts, jg, jp, pj, lastRound} }
-  table: {
-    1: {},
-    2: {}
-  },
-
-  // Partidos teóricos de cada cancha (pre-generados)
-  schedule: {
-    1: [],  // cada item: {a,b,c,d, played:false, scoreA:0, scoreB:0}
+    1: [], // ['a','b',...]
     2: []
   },
-
-  // índice del partido actual abierto en cada cancha
-  cursor: {
-    1: -1,
-    2: -1
-  }
+  // si tienes standings en memoria, puedes guardarlos aquí
+  // standings: { 1: [...], 2: [...] }
 };
 
 /* =========================
-   Utilidades
+   HOOKS CON TU LÓGICA EXISTENTE
    ========================= */
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
-
-function byId(id){ return document.getElementById(id); }
-
-// combinatoria nC2
-function comb2(n){ return (n*(n-1))/2; }
-
-// genera todas las duplas (parejas) de un set de jugadores
-function allPairs(list){
-  const res = [];
-  for(let i=0;i<list.length;i++){
-    for(let j=i+1;j<list.length;j++){
-      res.push([list[i], list[j]]);
-    }
-  }
-  return res;
+/** Genera siguiente partido de Americano para una cancha (tu lógica). */
+function generateAmericanoForCourt(court) {
+  // TODO: conecta con tu generador actual de Americano.
+  //   Debe renderizar exactamente 1 partido en #matchesCourt{court}
+  //   con inputs de score y botón "Guardar resultado".
+  //   Cuando llames a "saveAmericanoResult" desde ese botón,
+  //   tu lógica debe actualizar standings, jugadores, etc.
+  alert(`(stub) Generar partidos Americano — Cancha ${court}. Conecta tu función real.`);
 }
 
-// intenta emparejar dos duplas disjuntas
-function disjoint(p1, p2){
-  return p1[0]!==p2[0] && p1[0]!==p2[1] && p1[1]!==p2[0] && p1[1]!==p2[1];
+/** Guarda el resultado de Americano (tu lógica). */
+function saveAmericanoResult(court, teamA, teamB, sA, sB) {
+  // TODO: integra tu lógica de guardado/suma de puntos.
+  console.log('(stub) saveAmericanoResult', { court, teamA, teamB, sA, sB });
+  // Al terminar, puedes volver a llamar generateAmericanoForCourt(court)
 }
 
-// algoritmo simple para construir todos los partidos sin repetir jugadores
-// objetivo: que cada pareja se forme una sola vez; total de partidos = C(n,2)/2
-function buildFullSchedule(players){
-  const pairs = allPairs(players);                 // todas las parejas posibles
-  const used = new Set();                          // marca pareja usada: "a|b" (ordenado)
-  const matches = [];                              // [{a,b,c,d}]
-
-  // ordenamos para más estabilidad
-  pairs.sort((p,q)=> (p[0]+p[1]).localeCompare(q[0]+q[1]));
-
-  for(let i=0;i<pairs.length;i++){
-    const p1 = pairs[i];
-    const key1 = p1.slice().sort().join('|');
-    if(used.has(key1)) continue;
-
-    // buscar otra pareja disjunta no usada
-    let chosenIdx = -1;
-    for(let j=i+1;j<pairs.length;j++){
-      const p2 = pairs[j];
-      const key2 = p2.slice().sort().join('|');
-      if(used.has(key2)) continue;
-      if(disjoint(p1,p2)){
-        chosenIdx = j; break;
-      }
-    }
-    if(chosenIdx === -1) continue; // (con 8 y 6 normalmente siempre hay)
-
-    const p2 = pairs[chosenIdx];
-    const key2 = p2.slice().sort().join('|');
-
-    used.add(key1); used.add(key2);
-    matches.push({ a:p1[0], b:p1[1], c:p2[0], d:p2[1], played:false, sA:0, sB:0 });
-  }
-  return matches;
-}
-
-function ensureTableEntry(court, name){
-  if(!state.table[court][name]){
-    state.table[court][name] = { name, pts:0, jg:0, jp:0, pj:0, lastRound:0 };
-  }
-}
-
-/* =========================
-   Render UI
-   ========================= */
-
-function renderPlayers(court){
-  const ul = byId(court===1?'listC1':'listC2');
-  ul.innerHTML = '';
-  state.players[court].forEach((name, idx)=>{
-    const li = document.createElement('li');
-    const left = document.createElement('div');
-    left.className = 'left';
-    const tag = document.createElement('span');
-    tag.className = 'tag';
-    tag.textContent = name;
-    const badge = document.createElement('span');
-    badge.className='badge';
-    badge.textContent = `C${court}`;
-    left.appendChild(tag); left.appendChild(badge);
-
-    const del = document.createElement('button');
-    del.textContent = 'x';
-    del.onclick = ()=>{
-      state.players[court].splice(idx,1);
-      // limpiar todo lo asociado si quitamos jugadores antes de arrancar
-      state.schedule[court] = [];
-      state.cursor[court] = -1;
-      state.table[court] = {};
-      renderPlayers(court); renderTable(court);
-      renderOpenMatch(court);
-      renderPendingMeta(court);
-    };
-
-    li.appendChild(left);
-    li.appendChild(del);
-    ul.appendChild(li);
-  });
-}
-
-function renderPendingMeta(court){
-  const p = state.players[court];
-  const totalMatches = Math.floor(comb2(p.length)/2);   // C(n,2)/2
-  const played = state.schedule[court].filter(m=>m.played).length;
-  const pend = Math.max(totalMatches - played, 0);
-  byId(court===1?'c1Meta':'c2Meta').textContent = `Pendientes: ${pend} partido${pend!==1?'s':''}`;
-}
-
-function renderOpenMatch(court){
-  const wrap = byId(court===1?'openMatchC1':'openMatchC2');
-  wrap.innerHTML = '';
-
-  const idx = state.cursor[court];
-  if(idx<0 || !state.schedule[court][idx]){
-    // no hay abierto
-    return;
-  }
-  const m = state.schedule[court][idx];
-  const card = document.createElement('div');
-  card.className = 'card';
-
-  const meta = document.createElement('div');
-  meta.className = 'meta';
-  const round = court===1?state.roundC1:state.roundC2;
-  meta.textContent = `Cancha ${court} · Ronda ${round}`;
-  card.appendChild(meta);
-
-  const row = document.createElement('div');
-  row.className='vs';
-  [m.a,m.b,'vs',m.c,m.d].forEach(x=>{
-    const el = document.createElement('span');
-    if(x==='vs'){ el.className='muted'; el.textContent='vs'; }
-    else{ el.className='tag'; el.textContent=x; }
-    row.appendChild(el);
-  });
-
-  const mark = document.createElement('div');
-  mark.className='mark';
-  const sA = document.createElement('input'); sA.type='number'; sA.min=0; sA.value=m.sA; sA.className='score';
-  const sB = document.createElement('input'); sB.type='number'; sB.min=0; sB.value=m.sB; sB.className='score';
-
-  const btn = document.createElement('button');
-  btn.textContent='Guardar resultado';
-  btn.onclick = ()=> saveResult(court, parseInt(sA.value||0,10), parseInt(sB.value||0,10));
-
-  mark.appendChild(sA); mark.appendChild(document.createTextNode(' - ')); mark.appendChild(sB);
-  mark.appendChild(btn);
-  row.appendChild(mark);
-
-  card.appendChild(row);
-  wrap.appendChild(card);
-}
-
-function renderTable(court){
-  const tbody = (court===1?byId('tableC1'):byId('tableC2')).querySelector('tbody');
+/** Render de standings (si los traes de otro lado). */
+function renderStandings(court, rows /* [{name,pts,...}] */) {
+  const table = document.getElementById(court === 1 ? 'standingsCourt1' : 'standingsCourt2');
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
   tbody.innerHTML = '';
-
-  // ordenar por pts desc, luego JG desc, JP asc
-  const rows = Object.values(state.table[court])
-    .sort((a,b)=> (b.pts-a.pts) || (b.jg-a.jg) || (a.jp-b.jp) || (a.name>b.name?1:-1));
-
-  rows.forEach((r,idx)=>{
+  rows.forEach((r, idx) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${idx+1}</td>
       <td>${r.name}</td>
-      <td>${r.pts}</td>
-      <td>${r.jg}</td>
-      <td>${r.jp}</td>
-      <td>${r.pj}</td>
-      <td>${r.lastRound}</td>
-    `;
+      <td>${r.pts ?? 0}</td>
+      <td>${r.jg ?? 0}</td>
+      <td>${r.jp ?? 0}</td>
+      <td>${r.partidos ?? 0}</td>
+      <td>${r.last ?? 0}</td>`;
     tbody.appendChild(tr);
   });
 }
 
-/* =========================
-   Lógica core
-   ========================= */
-
-function addPlayer(court, name){
-  name = (name||'').trim().toLowerCase();
-  if(!name) return;
-  if(state.players[court].includes(name)) return;
-
-  // límite 8 por cancha
-  if(state.players[court].length >= 8){
-    alert('Máximo 8 jugadores por cancha.');
-    return;
-  }
-
-  state.players[court].push(name);
-  ensureTableEntry(court,name);
-  renderPlayers(court); renderTable(court); renderPendingMeta(court);
-}
-
-function generateScheduleIfNeeded(court){
-  if(state.schedule[court].length>0) return;
-
-  const p = state.players[court];
-  if(p.length<4 || p.length%2!==0){
-    alert(`Cancha ${court}: se requieren al menos 4 y número par de jugadores.`);
-    return;
-  }
-  // C(n,2)/2 partidos
-  state.schedule[court] = buildFullSchedule(p);
-  state.cursor[court] = -1;
-  nextMatch(court);
-}
-
-function nextMatch(court){
-  const sched = state.schedule[court];
-  const nextIdx = sched.findIndex(m=>!m.played);
-  if(nextIdx===-1){
-    // terminado
-    byId(court===1?'openMatchC1':'openMatchC2').innerHTML = '';
-    showEliminationButton(court);
-    return;
-  }
-  state.cursor[court] = nextIdx;
-  if(court===1) state.roundC1++; else state.roundC2++;
-  renderOpenMatch(court);
-  renderPendingMeta(court);
-}
-
-// guarda resultado y avanza
-function saveResult(court, sA, sB){
-  const idx = state.cursor[court];
-  if(idx<0) return;
-  const m = state.schedule[court][idx];
-
-  // normalizar a meta
-  const max = state.meta;
-  sA = Math.min(max, Math.max(0,sA));
-  sB = Math.min(max, Math.max(0,sB));
-
-  m.sA=sA; m.sB=sB; m.played=true;
-
-  // actualizar tabla (suma "games" como pts)
-  const upd = (name, won, lost)=>{
-    ensureTableEntry(court,name);
-    state.table[court][name].pts += (won-lost>0 ? won : won); // sumo games ganados siempre
-    state.table[court][name].jg  += won;
-    state.table[court][name].jp  += lost;
-    state.table[court][name].pj  += 1;
-    state.table[court][name].lastRound = (court===1?state.roundC1:state.roundC2)-1;
-  };
-
-  upd(m.a, sA, sB); upd(m.b, sA, sB);
-  upd(m.c, sB, sA); upd(m.d, sB, sA);
-
-  renderTable(court);
-  renderPendingMeta(court);
-  nextMatch(court);
-}
-
-/* =========================
-   Eliminatorias por cancha
-   ========================= */
-
-function showEliminationButton(court){
-  const host = byId(court===1?'elimsC1':'elimsC2');
-  host.innerHTML = '';
-  const btn = document.createElement('button');
-  btn.textContent = `Crear eliminatoria (Cancha ${court})`;
-  btn.className='primary';
-  btn.onclick = ()=> createElimsForCourt(court);
-  host.appendChild(btn);
-}
-
-function createElimsForCourt(court){
-  // Top-4 (semifinales) si hay 8 jugadores o menos
-  const ordered = Object.values(state.table[court])
-    .sort((a,b)=> (b.pts-a.pts) || (b.jg-a.jg) || (a.jp-b.jp) || (a.name>b.name?1:-1));
-
-  if(ordered.length<4){
-    alert(`Cancha ${court}: se requieren 4 o más para eliminatoria.`);
-    return;
-  }
-
-  // Semis por cancha: 1&3 vs 2&4 (lo acordado)
-  const top4 = ordered.slice(0,4).map(r=>r.name);
-  const [p1,p2,p3,p4] = top4;
-
-  const wrap = byId(court===1?'openMatchC1':'openMatchC2');
-  wrap.innerHTML = '';
-
-  // dos tarjetas (semis)
-  const semis = [
-    {a:p1,b:p3,c:p2,d:p4},
-    {a:p2,b:p4,c:p1,d:p3} // espejo para tener 2 partidos listos; puedes cambiarlo si prefieres 1 por vez
-  ];
-
-  semis.forEach((m,i)=>{
-    const card = document.createElement('div'); card.className='card';
-    const meta = document.createElement('div'); meta.className='meta';
-    meta.textContent = `Eliminatoria — Cancha ${court} · Semi ${i+1}`;
-    card.appendChild(meta);
-
-    const row = document.createElement('div'); row.className='vs';
-    [m.a,m.b,'vs',m.c,m.d].forEach(x=>{
-      const el = document.createElement('span');
-      el.className = (x==='vs'?'muted':'tag'); el.textContent = (x==='vs'?'vs':x);
-      row.appendChild(el);
+/** Render pills de jugadores (tu UI actual). */
+function renderPlayers(court) {
+  const ul = document.getElementById(court === 1 ? 'playersCourt1' : 'playersCourt2');
+  if (!ul) return;
+  ul.innerHTML = '';
+  state.players[court].forEach(name => {
+    const li = document.createElement('li');
+    li.className = 'pill';
+    li.innerHTML = `
+      <div class="left">
+        <span class="tag">${name}</span>
+        <span class="badge">C${court}</span>
+      </div>
+      <button class="danger small">x</button>`;
+    li.querySelector('button').addEventListener('click', () => {
+      state.players[court] = state.players[court].filter(n => n !== name);
+      renderPlayers(court);
     });
-
-    const sA=document.createElement('input'); sA.type='number'; sA.min=0; sA.value=0; sA.className='score';
-    const sB=document.createElement('input'); sB.type='number'; sB.min=0; sB.value=0; sB.className='score';
-    const btn=document.createElement('button'); btn.textContent='Guardar resultado';
-    btn.onclick = ()=>{
-      const a=parseInt(sA.value||0,10), b=parseInt(sB.value||0,10);
-      alert(`Resultado guardado (Semi ${i+1} C${court}): ${a}-${b}. (Aquí ya puedes encadenar Final por cancha si quieres)`);
-    };
-    const mark=document.createElement('div'); mark.className='mark';
-    mark.appendChild(sA); mark.appendChild(document.createTextNode(' - ')); mark.appendChild(sB); mark.appendChild(btn);
-
-    row.appendChild(mark); card.appendChild(row);
-    wrap.appendChild(card);
+    ul.appendChild(li);
   });
 }
 
 /* =========================
-   Wiring UI
+   SELECTORES / CONTROLES
    ========================= */
 
-function wire(){
-  byId('roomCode').textContent = (state.room = Math.random().toString(36).slice(2,7));
-
-  // selects
-  byId('courtsSelect').onchange = e=>{
-    state.courts = parseInt(e.target.value,10);
-    // mostar/ocultar bloques de C2
-    const showC2 = state.courts===2;
-    byId('playersC2').style.display = showC2?'block':'none';
-    byId('matchesC2').style.display = showC2?'block':'none';
-  };
-  byId('targetSelect').onchange = e=> state.meta = parseInt(e.target.value,10);
-
-  // add buttons
-  byId('addBtnC1').onclick = ()=>{ addPlayer(1, byId('nameInputC1').value); byId('nameInputC1').value=''; };
-  byId('addBtnC2').onclick = ()=>{ addPlayer(2, byId('nameInputC2').value); byId('nameInputC2').value=''; };
-
-  // reset
-  byId('resetC1').onclick = ()=>{
-    state.players[1]=[]; state.table[1]={}; state.schedule[1]=[]; state.cursor[1]=-1; state.roundC1=1;
-    renderPlayers(1); renderTable(1); renderOpenMatch(1); renderPendingMeta(1); byId('elimsC1').innerHTML='';
-  };
-  byId('resetC2').onclick = ()=>{
-    state.players[2]=[]; state.table[2]={}; state.schedule[2]=[]; state.cursor[2]=-1; state.roundC2=1;
-    renderPlayers(2); renderTable(2); renderOpenMatch(2); renderPendingMeta(2); byId('elimsC2').innerHTML='';
-  };
-
-  // generar por cancha
-  byId('genBtnC1').onclick = ()=> generateScheduleIfNeeded(1);
-  byId('genBtnC2').onclick = ()=> generateScheduleIfNeeded(2);
-
-  // arranque
-  renderPlayers(1); renderPlayers(2);
-  renderTable(1); renderTable(2);
-  renderPendingMeta(1); renderPendingMeta(2);
-
-  // esconder C2 si está en 1 cancha
-  byId('courtsSelect').dispatchEvent(new Event('change'));
+function getCourtsCount() {
+  const el = document.getElementById('courtsSelect');
+  return el ? parseInt(el.value, 10) : 1;
+}
+function getMeta() {
+  const el = document.getElementById('metaSelect');
+  return el ? parseInt(el.value, 10) : 3;
 }
 
-document.addEventListener('DOMContentLoaded', wire);
+/* Visibilidad de Cancha 2 */
+function updateCourtsLayout() {
+  const count = getCourtsCount();
+  const w2 = document.getElementById('court2Wrap');
+  if (w2) w2.style.display = (count >= 2) ? '' : 'none';
+}
+document.getElementById('courtsSelect')?.addEventListener('change', updateCourtsLayout);
+updateCourtsLayout();
+
+/* Límite 8 por cancha */
+function canAddToCourt(court) {
+  return state.players[court].length < 8;
+}
+
+/* Inputs agregar jugadores */
+document.getElementById('addC1')?.addEventListener('click', () => {
+  const name = (document.getElementById('playerNameC1').value || '').trim();
+  if (!name) return;
+  if (!canAddToCourt(1)) { alert('Máximo 8 jugadores en Cancha 1'); return; }
+  if (!state.players[1].includes(name)) state.players[1].push(name);
+  document.getElementById('playerNameC1').value = '';
+  renderPlayers(1);
+});
+document.getElementById('addC2')?.addEventListener('click', () => {
+  const name = (document.getElementById('playerNameC2').value || '').trim();
+  if (!name) return;
+  if (!canAddToCourt(2)) { alert('Máximo 8 jugadores en Cancha 2'); return; }
+  if (!state.players[2].includes(name)) state.players[2].push(name);
+  document.getElementById('playerNameC2').value = '';
+  renderPlayers(2);
+});
+
+/* Reinicios por cancha */
+document.getElementById('resetC1')?.addEventListener('click', () => {
+  state.players[1] = [];
+  renderPlayers(1);
+  document.getElementById('matchesCourt1').innerHTML = '';
+  renderStandings(1, []);
+});
+document.getElementById('resetC2')?.addEventListener('click', () => {
+  state.players[2] = [];
+  renderPlayers(2);
+  document.getElementById('matchesCourt2').innerHTML = '';
+  renderStandings(2, []);
+});
+
+/* Generar partidos de Americano (usa tu generador real) */
+document.getElementById('genMatchesC1')?.addEventListener('click', () => generateAmericanoForCourt(1));
+document.getElementById('genMatchesC2')?.addEventListener('click', () => generateAmericanoForCourt(2));
+
+/* =========================
+   STANDINGS LECTURA (desde DOM)
+   ========================= */
+
+/** Lee standings de la tabla y devuelve lista ordenada [{name,pts}, ...] */
+function getStandingsForCourt(court) {
+  const tableEl = document.getElementById(court === 1 ? 'standingsCourt1' : 'standingsCourt2');
+  const rows = [...(tableEl?.querySelectorAll('tbody tr') || [])];
+  const list = rows.map(tr => {
+    const tds = tr.querySelectorAll('td');
+    return {
+      name: (tds[1]?.textContent || '').trim(),
+      pts : parseInt(tds[2]?.textContent || '0', 10) || 0
+    };
+  });
+  list.sort((a, b) => b.pts - a.pts);
+  return list;
+}
+
+/* =========================
+   RENDER PARTIDOS "1 ABIERTO"
+   ========================= */
+
+function renderSingleMatchCard(court, title, pairA, pairB, onSave) {
+  const container = document.getElementById(court === 1 ? 'matchesCourt1' : 'matchesCourt2');
+  if (!container) return;
+
+  // "solo 1 abierto"
+  container.innerHTML = '';
+
+  const meta = getMeta();
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="meta">${title}</div>
+    <div class="vs">
+      ${pairA.map(p => `<span class="tag">${p}</span>`).join(' ')}
+      <span class="muted">vs</span>
+      ${pairB.map(p => `<span class="tag">${p}</span>`).join(' ')}
+      <div class="mark">
+        <label class="muted">Marcador (a ${meta}):</label>
+        <input type="number" min="0" class="score" id="sA" value="0">
+        <span class="muted">-</span>
+        <input type="number" min="0" class="score" id="sB" value="0">
+      </div>
+      <button class="primary" id="btnSave">Guardar resultado</button>
+    </div>
+  `;
+  container.appendChild(card);
+
+  card.querySelector('#btnSave')?.addEventListener('click', () => {
+    const sA = parseInt(card.querySelector('#sA').value || '0', 10);
+    const sB = parseInt(card.querySelector('#sB').value || '0', 10);
+    if (!validateScore(sA, sB)) return;
+    onSave({ sA, sB, pairA: [...pairA], pairB: [...pairB], court });
+  });
+}
+
+/* =========================
+   VALIDACIÓN META
+   ========================= */
+
+function validateScore(sA, sB) {
+  const meta = getMeta();
+  const aWin = (sA === meta) && (sB >= 0 && sB < meta);
+  const bWin = (sB === meta) && (sA >= 0 && sA < meta);
+  if (!aWin && !bWin) {
+    alert(`Marcador inválido. El ganador debe llegar a ${meta} y el rival quedar por debajo.`);
+    return false;
+  }
+  return true;
+}
+
+/* =========================
+   ELIMINATORIAS
+   ========================= */
+
+const nextSemiByCourt = { 1: null, 2: null };
+let pendingLowCrossSecond = null;
+
+/** Semifinales POR CANCHA (1,3 vs 2,4 y opcional 5,7 vs 6,8) */
+function createSemisByCourt(court) {
+  const list = getStandingsForCourt(court).map(x => x.name);
+  if (list.length < 4) {
+    alert('Se necesitan al menos 4 jugadores en la cancha para semifinales.');
+    return;
+  }
+
+  // TOP 4: 1,3 vs 2,4
+  const t1 = list[0], t2 = list[1], t3 = list[2], t4 = list[3];
+  const topSemi1A = [t1, t3], topSemi1B = [t2, t4];
+  renderSingleMatchCard(court, `Eliminatoria — Cancha ${court} · Semi 1`, topSemi1A, topSemi1B, saveElimResult);
+
+  // Bloque bajo si hay >=8
+  if (list.length >= 8) {
+    const b5 = list[4], b6 = list[5], b7 = list[6], b8 = list[7];
+    nextSemiByCourt[court] = {
+      title: `Eliminatoria — Cancha ${court} · Semi 2 (bajo)`,
+      pairA: [b5, b7],
+      pairB: [b6, b8]
+    };
+  } else {
+    nextSemiByCourt[court] = null;
+  }
+}
+
+/** Semifinales CRUZADAS entre 2 canchas */
+function createSemisCrossTwoCourts() {
+  if (getCourtsCount() < 2) {
+    alert('Selecciona 2 canchas para generar semifinales cruzadas.');
+    return;
+  }
+  const a = getStandingsForCourt(1).map(x => x.name);
+  const b = getStandingsForCourt(2).map(x => x.name);
+  if (a.length < 4 || b.length < 4) {
+    alert('Se requieren al menos 4 jugadores en cada cancha para cruzar semifinales.');
+    return;
+  }
+
+  // C1(1,3) vs C2(2,4)
+  renderSingleMatchCard(1, `Eliminatoria — Cruzada · Semi 1`, [a[0], a[2]], [b[1], b[3]], saveElimResult);
+  // C1(2,4) vs C2(1,3) (queda pendiente en C1)
+  nextSemiByCourt[1] = {
+    title: `Eliminatoria — Cruzada · Semi 2`,
+    pairA: [a[1], a[3]],
+    pairB: [b[0], b[2]]
+  };
+
+  // Bajo si ambas tienen 8
+  if (a.length >= 8 && b.length >= 8) {
+    // Primero en C2:
+    nextSemiByCourt[2] = {
+      title: `Eliminatoria — Cruzada · Bajo 1`,
+      pairA: [a[4], a[6]], // C1(5,7)
+      pairB: [b[5], b[7]]  // C2(6,8)
+    };
+    // Después en C2:
+    pendingLowCrossSecond = {
+      title: `Eliminatoria — Cruzada · Bajo 2`,
+      pairA: [a[5], a[7]], // C1(6,8)
+      pairB: [b[4], b[6]]  // C2(5,7)
+    };
+  } else {
+    nextSemiByCourt[2] = null;
+    pendingLowCrossSecond = null;
+  }
+}
+
+/** Guardar resultado de eliminatoria y encadenar la siguiente si aplica */
+function saveElimResult({ sA, sB, pairA, pairB, court }) {
+  // TODO: si quieres sumar algo a un historial de playoffs, hazlo aquí.
+  console.log('elim result', { court, pairA, sA, pairB, sB });
+
+  const nxt = nextSemiByCourt[court];
+  const container = document.getElementById(court === 1 ? 'matchesCourt1' : 'matchesCourt2');
+
+  if (nxt) {
+    renderSingleMatchCard(court, nxt.title, nxt.pairA, nxt.pairB, saveElimResult);
+    nextSemiByCourt[court] = null;
+  } else if (pendingLowCrossSecond && court === 2) {
+    renderSingleMatchCard(2, pendingLowCrossSecond.title, pendingLowCrossSecond.pairA, pendingLowCrossSecond.pairB, saveElimResult);
+    pendingLowCrossSecond = null;
+  } else {
+    if (container) container.innerHTML = '';
+  }
+}
+
+/* =========================
+   BOTONES ELIMINATORIA
+   ========================= */
+
+document.getElementById('btnElimsCourt1')?.addEventListener('click', () => {
+  if (getCourtsCount() === 1) {
+    createSemisByCourt(1);
+  } else {
+    // con 2 canchas, también permitimos semis solo de cancha 1 si quieres
+    if (confirm('¿Crear eliminatoria solo para Cancha 1? (Aceptar = Solo C1, Cancelar = Cruzadas entre 2 canchas)')) {
+      createSemisByCourt(1);
+    } else {
+      createSemisCrossTwoCourts();
+    }
+  }
+});
+
+document.getElementById('btnElimsGlobal')?.addEventListener('click', () => {
+  if (getCourtsCount() === 1) createSemisByCourt(1);
+  else createSemisCrossTwoCourts();
+});
+
+/* =========================
+   INICIAL (render vacío)
+   ========================= */
+
+renderPlayers(1);
+renderPlayers(2);
+renderStandings(1, []); // si tienes standings en memoria, colócalos aquí
+renderStandings(2, []);
