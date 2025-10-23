@@ -25,6 +25,8 @@
     .hidden{display:none!important}
     table.table{width:100%;border-collapse:collapse}
     .table th,.table td{border-bottom:1px solid var(--line);padding:.35rem .5rem;text-align:left}
+    dialog.modal{border:1px solid var(--line);border-radius:12px;background:#0f1923;color:var(--txt);padding:1rem;max-width:520px}
+    dialog.modal::backdrop{background:rgba(0,0,0,.6)}
   </style>
 </head>
 <body>
@@ -130,12 +132,20 @@
       </aside>
     </div>
 
-    <!-- Botón de playoff por canchas (cuartos/semis basado en posiciones por cancha) -->
+    <!-- Playoff global -->
     <div id="playoffBar" class="hidden">
-      <button id="buildPlayoff" class="primary">Crear eliminatoria (Cuartos / Semis por cancha)</button>
+      <button id="buildPlayoff" class="primary">Crear eliminatoria global (C1 vs C2)</button>
     </div>
 
   </div>
+
+  <dialog id="playoffModal" class="modal">
+    <h3 style="margin:0 0 .6rem">Eliminatoria global</h3>
+    <div id="playoffList" class="muted"></div>
+    <div style="margin-top:1rem;display:flex;justify-content:flex-end">
+      <button id="closeModal">Cerrar</button>
+    </div>
+  </dialog>
 
   <script src="script.js"></script>
 </body>
