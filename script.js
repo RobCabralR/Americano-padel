@@ -1,5 +1,5 @@
-/* Americano por cancha — una sola partida abierta por cancha, máx. 8 jugadores por cancha
-   Validaciones: meta exacta, sin empates. Elim. flexible: 1 o 2 canchas.
+/* Americano por cancha + Eliminatoria embebida (sin modal)
+   Reglas conservadas: max 8 por cancha, sin empates, ganador debe llegar EXACTO a la meta.
 */
 
 (function(){
@@ -13,7 +13,10 @@
     round: { 1: 1, 2: 1 },
     queue: { 1: [], 2: [] },
     openMatch: { 1: null, 2: null },
-    finished: { 1: false, 2: false }
+    finished: { 1: false, 2: false },
+
+    // Eliminatoria
+    playoff: null // se llena con { metaTxt, top:{semi1,semi2,final}, bottom:{...} }
   };
 
   // ---------- Utils ----------
@@ -29,7 +32,6 @@
     children.forEach(c=>n.appendChild(c));
     return n;
   }
-  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
   const disjoint=(p1,p2)=> p1[0]!==p2[0] && p1[0]!==p2[1] && p1[1]!==p2[0] && p1[1]!==p2[1];
 
   // ---------- UI init ----------
@@ -51,8 +53,8 @@
   $("#reset2").onclick = ()=> resetCourt(2);
   $("#gen1").onclick = ()=> generateIfNeeded(1);
   $("#gen2").onclick = ()=> generateIfNeeded(2);
+
   $("#buildPlayoff").onclick = ()=> buildPlayoff();
-  $("#closeModal").onclick = ()=> $("#playoffModal").close();
 
   // ---------- Jugadores ----------
   function addPlayer(court, nameRaw){
@@ -66,6 +68,7 @@
     state.standings[court][name] = { pts:0, w:0, l:0, played:0, lastRound:0 };
     if(court===1) $("#playerInput1").value=""; else $("#playerInput2").value="";
     state.queue[court]=[]; state.openMatch[court]=null; state.finished[court]=false; state.round[court]=1;
+    state.playoff=null; // si cambian jugadores, invalidar playoff
     checkPlayoffReady(); renderAll();
   }
 
@@ -73,6 +76,7 @@
     state.players[court] = state.players[court].filter(n=>n!==name);
     delete state.standings[court][name];
     state.queue[court]=[]; state.openMatch[court]=null; state.finished[court]=false; state.round[court]=1;
+    state.playoff=null;
     checkPlayoffReady(); renderAll();
   }
 
@@ -83,6 +87,7 @@
     state.openMatch[court]=null;
     state.finished[court]=false;
     state.round[court]=1;
+    state.playoff=null;
     checkPlayoffReady(); renderAll();
   }
 
@@ -100,7 +105,6 @@
     renderAll();
   }
 
-  // Round-robin “método del círculo” + aplanado a partidos de dobles
   function buildAmericanQueue(players){
     const BYE = "__BYE__";
     const arr = players.slice();
@@ -147,7 +151,7 @@
     return matches;
   }
 
-  // ---------- Guardar resultado ----------
+  // ---------- Guardar resultado de americano ----------
   function saveResult(court, aScore, bScore){
     const m = state.openMatch[court];
     if(!m) return;
@@ -200,7 +204,7 @@
     });
   }
 
-  // ---------- Playoff ready bar ----------
+  // ---------- Playoff ready ----------
   function checkPlayoffReady(){
     const oneCourtReady = (state.courts===1 && state.finished[1]);
     const twoCourtsReady = (state.courts===2 && state.finished[1] && state.finished[2]);
@@ -211,104 +215,132 @@
       : "";
   }
 
-  // ---------- Playoff builder (1 ó 2 canchas) ----------
-  function buildPlayoff(){
-    if(state.courts===1) return buildPlayoffOneCourt();
-    return buildPlayoffTwoCourts();
+  // ---------- Playoff model ----------
+  function teamFmtLabel(team){
+    if(!team) return "(pendiente)";
+    const [court, a, b] = team;
+    if(court==="C1" || court==="C2") return `${court} (${a}, ${b})`;
+    // 1 cancha usa "C1" también
+    return `C1 (${a}, ${b})`;
   }
 
-  function teamFmt(court, a, b){ return `C${court} (${a}, ${b})`; }
+  function makeTeam(court, a, b){ return [court, a, b]; }
 
-  // 1 cancha
-  function buildPlayoffOneCourt(){
-    if(!state.finished[1]){ alert("Termina el americano primero."); return; }
-    const s = standingsOrdered(1).map(r=>r.name);
-    if(s.length<6){ alert("Se requieren al menos 6 jugadores para eliminatoria (1 cancha)."); return; }
-
-    const lines = [];
-
-    // Top4 siempre si hay >=6
-    lines.push("<strong>Top 4</strong>");
-    lines.push("• " + teamFmt(1, s[0], s[2]) + " vs " + teamFmt(1, s[1], s[3]));
-
-    // Bottom solo si hay 8
-    if(s.length>=8){
-      lines.push("<strong style='margin-top:.5rem;display:block'>Bottom 4</strong>");
-      lines.push("• " + teamFmt(1, s[4], s[6]) + " vs " + teamFmt(1, s[5], s[7]));
-    }
-
-    $("#playoffList").innerHTML = lines.join("<br/>");
-    $("#playoffModal").showModal();
-  }
-
-  // 2 canchas (flexible para 6 u 8 por cancha)
-  function buildPlayoffTwoCourts(){
-    if(!state.finished[1] || !state.finished[2]){ alert("Termina el americano en ambas canchas primero."); return; }
-
-    const s1 = standingsOrdered(1).map(r=>r.name);
-    const s2 = standingsOrdered(2).map(r=>r.name);
-    const n1 = s1.length, n2 = s2.length;
-
-    const out = [];
-
-    // --- Top 4 cruzado: requiere 4 y 4 ---
-    if(n1>=4 && n2>=4){
-      out.push("<strong>Top 4</strong>");
-      out.push("• " + teamFmt(1, s1[0], s1[2]) + " vs " + teamFmt(2, s2[0], s2[2]));
-      out.push("• " + teamFmt(1, s1[1], s1[3]) + " vs " + teamFmt(2, s2[1], s2[3]));
-    }else{
-      out.push("<em>No hay Top 4 porque alguna cancha tiene menos de 4 jugadores.</em>");
-    }
-
-    // --- Bottom flexible ---
-    const bottomTeams1 = buildBottomTeamsFromOrdered(s1);
-    const bottomTeams2 = buildBottomTeamsFromOrdered(s2);
-    const bottomCount = bottomTeams1.length + bottomTeams2.length;
-
-    if(bottomCount>0){
-      out.push("<strong style='margin-top:.5rem;display:block'>Bottom</strong>");
-      const len = Math.max(bottomTeams1.length, bottomTeams2.length);
-      for(let i=0;i<len;i++){
-        const t1 = bottomTeams1[i];
-        const t2 = bottomTeams2[i];
-        if(t1 && t2){
-          out.push("• " + teamFmt(1, t1[0], t1[1]) + " vs " + teamFmt(2, t2[0], t2[1]));
-        }else if(t1 && !t2){
-          out.push("• " + teamFmt(1, t1[0], t1[1]) + " — <em>bye (sin rival de C2)</em>");
-        }else if(!t1 && t2){
-          out.push("• " + teamFmt(2, t2[0], t2[1]) + " — <em>bye (sin rival de C1)</em>");
-        }
-      }
-    }
-
-    if(out.length===0){
-      out.push("<em>No hay suficientes jugadores para crear cruces.</em>");
-    }
-
-    $("#playoffList").innerHTML = out.join("<br/>");
-    $("#playoffModal").showModal();
-  }
-
-  // Regla de armado de equipos "Bottom" por cancha:
-  // - Si hay >=8 → dos equipos: (5,7) y (6,8)
-  // - Si hay 7 → (5,7) y (6) queda sin pareja → degradamos a (5,6)
-  // - Si hay 6 → un equipo: (5,6)
-  // - <6 → ninguno
   function buildBottomTeamsFromOrdered(ordered){
     const n = ordered.length;
+    const L = ordered;
     const teams = [];
     if(n<6) return teams;
-    if(n===6){ teams.push([ordered[4], ordered[5]]); return teams; }
-    if(n===7){
-      teams.push([ordered[4], ordered[6]]); // (5,7)
-      teams.push([ordered[5], null]);       // marcará falta; luego lo corregimos a (5,6)? mejor consolidar:
-      // consolidación simple: usar (5,6) y desechar lo anterior
-      return [[ordered[4], ordered[5]]];
-    }
+    if(n===6){ teams.push([L[4], L[5]]); return teams; }
+    if(n===7){ return [[L[4], L[5]]]; } // consolidado (5,6)
     // n>=8
-    teams.push([ordered[4], ordered[6]]);
-    teams.push([ordered[5], ordered[7]]);
+    teams.push([L[4], L[6]]);
+    teams.push([L[5], L[7]]);
     return teams;
+  }
+
+  // Crear estructura de playoff (sin modal)
+  function buildPlayoff(){
+    if(state.courts===1){
+      if(!state.finished[1]){ alert("Termina el americano primero."); return; }
+      const s = standingsOrdered(1).map(r=>r.name);
+      if(s.length<6){ alert("Se requieren al menos 6 jugadores para eliminatoria (1 cancha)."); return; }
+
+      const topSemi1 = { teamA: makeTeam("C1", s[0], s[2]), teamB: makeTeam("C1", s[1], s[3]), scoreA:null, scoreB:null, winner:null };
+      const topSemi2 = null; // 1 llave de semifinal directa (1,3) vs (2,4); final se forma al registrar este juego
+      const topFinal = { teamA: "winner_top_semi1", teamB: null, scoreA:null, scoreB:null, winner:null };
+
+      const bottom = (s.length>=8)
+        ? {
+            semi1: { teamA: makeTeam("C1", s[4], s[6]), teamB: makeTeam("C1", s[5], s[7]), scoreA:null, scoreB:null, winner:null },
+            semi2: null,
+            final: { teamA: "winner_bottom_semi1", teamB: null, scoreA:null, scoreB:null, winner:null }
+          }
+        : null;
+
+      state.playoff = {
+        metaTxt: "1 cancha",
+        top: { semi1: topSemi1, semi2: topSemi2, final: topFinal },
+        bottom
+      };
+    }else{
+      if(!state.finished[1] || !state.finished[2]){ alert("Termina el americano en ambas canchas primero."); return; }
+
+      const s1 = standingsOrdered(1).map(r=>r.name);
+      const s2 = standingsOrdered(2).map(r=>r.name);
+
+      const top = (s1.length>=4 && s2.length>=4)
+        ? {
+            semi1: { teamA: makeTeam("C1", s1[0], s1[2]), teamB: makeTeam("C2", s2[0], s2[2]), scoreA:null, scoreB:null, winner:null },
+            semi2: { teamA: makeTeam("C1", s1[1], s1[3]), teamB: makeTeam("C2", s2[1], s2[3]), scoreA:null, scoreB:null, winner:null },
+            final: { teamA: "winner_top_semi1", teamB: "winner_top_semi2", scoreA:null, scoreB:null, winner:null }
+          }
+        : null;
+
+      // Bottom flexible cruzado
+      const b1 = buildBottomTeamsFromOrdered(s1).map(t=>makeTeam("C1", t[0], t[1]));
+      const b2 = buildBottomTeamsFromOrdered(s2).map(t=>makeTeam("C2", t[0], t[1]));
+      const pairs = [];
+      const len = Math.max(b1.length, b2.length);
+      for(let i=0;i<len;i++){
+        const t1 = b1[i] || null;
+        const t2 = b2[i] || null;
+        pairs.push([t1, t2]); // si uno es null → bye
+      }
+
+      let bottom = null;
+      if(pairs.length>0){
+        // Construyo “semifinales” según cuantos pares haya (1 o 2)
+        if(pairs.length===1){
+          bottom = {
+            semi1: { teamA: pairs[0][0], teamB: pairs[0][1], scoreA:null, scoreB:null, winner:null },
+            semi2: null,
+            final: { teamA: "winner_bottom_semi1", teamB: null, scoreA:null, scoreB:null, winner:null }
+          };
+        }else{
+          bottom = {
+            semi1: { teamA: pairs[0][0], teamB: pairs[0][1], scoreA:null, scoreB:null, winner:null },
+            semi2: { teamA: pairs[1][0], teamB: pairs[1][1], scoreA:null, scoreB:null, winner:null },
+            final: { teamA: "winner_bottom_semi1", teamB: "winner_bottom_semi2", scoreA:null, scoreB:null, winner:null }
+          };
+        }
+      }
+
+      state.playoff = { metaTxt: "2 canchas cruzadas", top, bottom };
+    }
+
+    $("#playoffSection").classList.remove("hidden");
+    renderPlayoff();
+  }
+
+  // ---------- Registro de resultados en playoff ----------
+  function savePlayoffResult(scope, key, scoreA, scoreB){
+    const node = state.playoff[scope][key];
+    const G = state.goal;
+
+    const a = parseInt((scoreA.value||"").trim(),10);
+    const b = parseInt((scoreB.value||"").trim(),10);
+    if([a,b].some(x=>Number.isNaN(x)||x<0)){ alert("Marcador inválido."); return; }
+    if(a===b){ alert("No puede empatar."); return; }
+    const valid = (a===G && b<G) || (b===G && a<G);
+    if(!valid){ alert(`Marcador inválido: el ganador debe llegar exactamente a ${G} y el perdedor quedar por debajo.`); return; }
+
+    node.scoreA = a; node.scoreB = b;
+    node.winner = (a>b) ? node.teamA : node.teamB;
+
+    // Promocionar a final si aplica
+    const bracket = state.playoff[scope];
+    if(bracket.final){
+      if(bracket.final.teamA==="winner_"+scope+"_semi1" || bracket.final.teamA==="winner_top_semi1" || bracket.final.teamA==="winner_bottom_semi1"){
+        if(key==="semi1") bracket.final.teamA = node.winner;
+      }
+      if(bracket.final.teamB==="winner_"+scope+"_semi2" || bracket.final.teamB==="winner_top_semi2" || bracket.final.teamB==="winner_bottom_semi2"){
+        if(key==="semi2") bracket.final.teamB = node.winner;
+      }
+      // Para el caso 1 cancha (solo semi1 en top/bottom), final.teamB sigue null hasta que agreguemos otra llave; lo dejamos así.
+    }
+
+    renderPlayoff();
   }
 
   // ---------- Render ----------
@@ -318,6 +350,7 @@
     renderPlayersList(1); renderPlayersList(2);
     renderMatches(1); renderMatches(2);
     renderTable(1); renderTable(2);
+    renderPlayoff();
   }
 
   function renderPlayersList(court){
@@ -413,6 +446,100 @@
       ]);
       tbody.appendChild(tr);
     });
+  }
+
+  // ---------- Render playoff (embebido) ----------
+  function renderPlayoff(){
+    const sec = $("#playoffSection");
+    const topBox = $("#playoffTop");
+    const botBox = $("#playoffBottom");
+    const meta = $("#playoffMeta");
+
+    if(!state.playoff){
+      sec.classList.add("hidden");
+      return;
+    }
+    sec.classList.remove("hidden");
+    meta.textContent = state.playoff.metaTxt + ` · Meta ${state.goal}`;
+
+    // Helpers UI
+    function matchCard(scope, key, node, title){
+      const card = el("div",{class:"card"});
+      card.appendChild(el("div",{class:"meta",text:title}));
+
+      // bye auto-avance
+      if(!node.teamA && !node.teamB){
+        card.appendChild(el("div",{class:"muted",text:"(sin equipos)"}));
+        return card;
+      }
+      if(node.teamA && !node.teamB){
+        card.appendChild(el("div",{text: teamFmtLabel(node.teamA) + " — bye (avanza)"}));
+        node.winner = node.teamA;
+        return card;
+      }
+      if(!node.teamA && node.teamB){
+        card.appendChild(el("div",{text: teamFmtLabel(node.teamB) + " — bye (avanza)"}));
+        node.winner = node.teamB;
+        return card;
+      }
+
+      // Teams row
+      const row = el("div",{class:"row",style:"gap:.5rem;align-items:center"});
+      const tag = (t)=> el("span",{class:"tag",text:teamFmtLabel(t)});
+      row.appendChild(tag(node.teamA));
+      row.appendChild(el("span",{class:"muted",text:"VS"}));
+      row.appendChild(tag(node.teamB));
+      card.appendChild(row);
+
+      const G = state.goal;
+      const mark = el("div",{class:"mark"});
+      const inA = el("input",{class:"score",type:"number",min:"0",max:String(G),value: node.scoreA??0 });
+      const inB = el("input",{class:"score",type:"number",min:"0",max:String(G),value: node.scoreB??0 });
+      mark.appendChild(el("span",{class:"muted",text:`Marcador (a ${G}):`}));
+      mark.appendChild(inA);
+      mark.appendChild(el("span",{text:"-"}));
+      mark.appendChild(inB);
+      const btn = el("button",{class:"primary",text:"Guardar"});
+      btn.onclick = ()=> savePlayoffResult(scope, key, inA, inB);
+
+      const wrap = el("div",{class:"row",style:"justify-content:space-between;gap:.5rem"});
+      wrap.appendChild(mark); wrap.appendChild(btn);
+      card.appendChild(wrap);
+
+      if(node.winner){
+        card.appendChild(el("div",{class:"muted",text:"Ganador: "+teamFmtLabel(node.winner)}));
+      }
+      return card;
+    }
+
+    topBox.innerHTML = "";
+    botBox.innerHTML = "";
+
+    if(state.playoff.top){
+      const {semi1, semi2, final} = state.playoff.top;
+      if(semi1) topBox.appendChild(matchCard("top","semi1",semi1,"Semifinal"));
+      if(semi2) topBox.appendChild(matchCard("top","semi2",semi2,"Semifinal"));
+      if(final){
+        // Si final tiene referencias a winners y aún no están ambos definidos, lo mostramos informativo
+        const fNode = {
+          teamA: (typeof final.teamA==="string") ? null : final.teamA,
+          teamB: (typeof final.teamB==="string") ? null : final.teamB,
+          scoreA: final.scoreA, scoreB: final.scoreB, winner: final.winner
+        };
+        topBox.appendChild(matchCard("top","final",final,"Final"));
+      }
+    }else{
+      topBox.appendChild(el("div",{class:"muted",text:"(No hay Top disponible)"}));
+    }
+
+    if(state.playoff.bottom){
+      const {semi1, semi2, final} = state.playoff.bottom;
+      if(semi1) botBox.appendChild(matchCard("bottom","semi1",semi1,"Semifinal"));
+      if(semi2) botBox.appendChild(matchCard("bottom","semi2",semi2,"Semifinal"));
+      if(final) botBox.appendChild(matchCard("bottom","final",final,"Final Consolación"));
+    }else{
+      botBox.appendChild(el("div",{class:"muted",text:"(No hay Bottom en este formato)"}));
+    }
   }
 
   // Primera pintura
