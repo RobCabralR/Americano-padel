@@ -8,120 +8,111 @@
 </head>
 <body>
   <!-- Topbar -->
-  <header class="topbar">
+  <div class="topbar">
     <div class="pillrow">
       <span class="pill">Sala: <span id="roomCode">—</span></span>
       <button id="copyRoom" class="ghost">Copiar</button>
     </div>
 
-    <div class="pillrow select small">
+    <div class="pillrow">
       <label class="muted">Canchas:</label>
-      <select id="courtsSelect">
+      <select id="courtsSelect" class="small">
         <option value="1">1</option>
         <option value="2">2</option>
       </select>
-    </div>
 
-    <div class="pillrow select small">
-      <label class="muted">Meta:</label>
-      <select id="targetSelect">
-        <option value="3">3</option>
+      <label class="muted">Meta (juegos):</label>
+      <select id="metaSelect" class="small">
+        <option value="3" selected>3</option>
         <option value="4">4</option>
-        <option value="6">6</option>
+        <option value="5">5</option>
       </select>
+
+      <button id="btnElimsCourt1" class="ghost">Crear eliminatoria (Cancha 1)</button>
+      <button id="btnElimsGlobal" class="ghost">Crear eliminatoria (Global)</button>
     </div>
+  </div>
 
-    <div class="pillrow select small">
-      <label class="muted">Playoff:</label>
-      <select id="playoffMode">
-        <option value="auto">Automático</option>
-        <option value="semis">Semifinales (Top-8)</option>
-        <option value="cuartos">Cuartos (Top-12)</option>
-        <option value="off">Manual</option>
-      </select>
-    </div>
+  <!-- GRID Cancha 1 -->
+  <div id="court1Wrap" class="grid">
+    <!-- Jugadores C1 -->
+    <section>
+      <div class="sectionHead">
+        <h3 class="tight">Jugadores — Cancha 1</h3>
+        <button id="resetC1" class="danger">Reiniciar cancha 1</button>
+      </div>
 
-    <div class="pillrow">
-      <span class="pill">Ronda: <span id="roundLabel">1</span></span>
-    </div>
-  </header>
-
-  <!-- GRID -->
-  <main class="grid">
-
-    <!-- Jugadores — Cancha 1 -->
-    <section id="playersC1">
-      <h3>Jugadores — Cancha 1</h3>
+      <label class="muted">Nombre del jugador</label>
       <div class="row gap mt">
-        <input id="nameInputC1" placeholder="Nombre del jugador"/>
-        <button id="addBtnC1">Agregar</button>
+        <input id="playerNameC1" placeholder="Nombre del jugador"/>
+        <button id="addC1">Agregar</button>
       </div>
       <p class="muted mt">Máximo 8 por cancha. Cada jugador debe estar asignado a su cancha.</p>
-      <ul id="listC1" class="pills mt"></ul>
-      <button id="resetC1" class="danger mt">Reiniciar cancha 1</button>
+
+      <ul id="playersCourt1" class="pills mt"></ul>
     </section>
 
-    <!-- Partidos — Cancha 1 -->
-    <section id="matchesC1">
-      <h3>Partidos (cancha 1) — <span class="muted">solo 1 abierto a la vez</span></h3>
-      <div id="c1Meta" class="meta">Pendientes: 0 partidos</div>
-      <div id="openMatchC1"></div>
+    <!-- Partidos C1 -->
+    <section>
+      <h3 class="tight">Partidos (cancha 1) — <span class="muted">solo 1 abierto a la vez</span></h3>
+      <div id="matchesCourt1" class="mt"></div>
       <div class="row gap mt">
-        <button id="genBtnC1" class="primary">Generar partidos</button>
-        <div id="elimsC1" class="mt"></div>
+        <button id="genMatchesC1" class="primary">Generar partidos</button>
       </div>
     </section>
 
-    <!-- Tabla — Cancha 1 -->
+    <!-- Tabla C1 -->
     <aside>
       <h3>Tabla de posiciones — Cancha 1</h3>
-      <table class="table mt" id="tableC1">
+      <table id="standingsCourt1" class="table">
         <thead>
-          <tr>
-            <th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th>
-          </tr>
+          <tr><th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th></tr>
         </thead>
         <tbody></tbody>
       </table>
     </aside>
+  </div>
 
-    <!-- Jugadores — Cancha 2 -->
-    <section id="playersC2">
-      <h3>Jugadores — Cancha 2</h3>
+  <!-- GRID Cancha 2 -->
+  <div id="court2Wrap" class="grid" style="display:none">
+    <!-- Jugadores C2 -->
+    <section>
+      <div class="sectionHead">
+        <h3 class="tight">Jugadores — Cancha 2</h3>
+        <button id="resetC2" class="danger">Reiniciar cancha 2</button>
+      </div>
+
+      <label class="muted">Nombre del jugador</label>
       <div class="row gap mt">
-        <input id="nameInputC2" placeholder="Nombre del jugador"/>
-        <button id="addBtnC2">Agregar</button>
+        <input id="playerNameC2" placeholder="Nombre del jugador"/>
+        <button id="addC2">Agregar</button>
       </div>
       <p class="muted mt">Máximo 8 por cancha. Cada jugador debe estar asignado a su cancha.</p>
-      <ul id="listC2" class="pills mt"></ul>
-      <button id="resetC2" class="danger mt">Reiniciar cancha 2</button>
+
+      <ul id="playersCourt2" class="pills mt"></ul>
     </section>
 
-    <!-- Partidos — Cancha 2 -->
-    <section id="matchesC2">
-      <h3>Partidos (cancha 2) — <span class="muted">solo 1 abierto a la vez</span></h3>
-      <div id="c2Meta" class="meta">Pendientes: 0 partidos</div>
-      <div id="openMatchC2"></div>
+    <!-- Partidos C2 -->
+    <section>
+      <h3 class="tight">Partidos (cancha 2) — <span class="muted">solo 1 abierto a la vez</span></h3>
+      <div id="matchesCourt2" class="mt"></div>
       <div class="row gap mt">
-        <button id="genBtnC2" class="primary">Generar partidos</button>
-        <div id="elimsC2" class="mt"></div>
+        <button id="genMatchesC2" class="primary">Generar partidos</button>
       </div>
     </section>
 
-    <!-- Tabla — Cancha 2 -->
+    <!-- Tabla C2 -->
     <aside>
       <h3>Tabla de posiciones — Cancha 2</h3>
-      <table class="table mt" id="tableC2">
+      <table id="standingsCourt2" class="table">
         <thead>
-          <tr>
-            <th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th>
-          </tr>
+        <tr><th>#</th><th>Jugador</th><th>Pts (games)</th><th>JG</th><th>JP</th><th>Partidos</th><th>Últ. ronda</th></tr>
         </thead>
         <tbody></tbody>
       </table>
     </aside>
-  </main>
+  </div>
 
-  <script src="script.js"></script>
+  <script src="script.js" defer></script>
 </body>
 </html>
