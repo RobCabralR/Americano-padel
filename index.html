@@ -6,7 +6,6 @@
   <title>Americano Padel</title>
   <link rel="stylesheet" href="style.css"/>
   <style>
-    /* Ajustes mínimos para el layout por cancha sin tocar tu style.css */
     .topbar{display:flex;gap:.6rem;align-items:center;justify-content:space-between;padding:.6rem 1rem;border-bottom:1px solid var(--line)}
     .pillrow{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
     .select select{background:var(--pill);color:var(--txt);border:0;padding:.25rem .5rem;border-radius:6px}
@@ -25,7 +24,7 @@
     .hidden{display:none!important}
     table.table{width:100%;border-collapse:collapse}
     .table th,.table td{border-bottom:1px solid var(--line);padding:.35rem .5rem;text-align:left}
-    dialog.modal{border:1px solid var(--line);border-radius:12px;background:#0f1923;color:var(--txt);padding:1rem;max-width:520px}
+    dialog.modal{border:1px solid var(--line);border-radius:12px;background:#0f1923;color:var(--txt);padding:1rem;max-width:560px}
     dialog.modal::backdrop{background:rgba(0,0,0,.6)}
   </style>
 </head>
@@ -132,15 +131,16 @@
       </aside>
     </div>
 
-    <!-- Playoff global -->
-    <div id="playoffBar" class="hidden">
-      <button id="buildPlayoff" class="primary">Crear eliminatoria global (C1 vs C2)</button>
+    <!-- Playoff -->
+    <div id="playoffBar" class="hidden" style="padding:0 .5rem .5rem">
+      <button id="buildPlayoff" class="primary">Crear eliminatoria</button>
+      <span class="muted" id="playoffHint"></span>
     </div>
 
   </div>
 
   <dialog id="playoffModal" class="modal">
-    <h3 style="margin:0 0 .6rem">Eliminatoria global</h3>
+    <h3 style="margin:0 0 .6rem">Eliminatoria</h3>
     <div id="playoffList" class="muted"></div>
     <div style="margin-top:1rem;display:flex;justify-content:flex-end">
       <button id="closeModal">Cerrar</button>
