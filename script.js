@@ -1,451 +1,334 @@
-/***** Estado *****/
-const state = {
-  room: (location.hash.slice(1) || Math.random().toString(36).slice(2,7)),
-  round: 1,
-  target: 3,
-  courts: 1,
-  stage: "group",         // "group" | "playoff"
-  playoffMode: "auto",    // auto | semis8 | quarters8
-  players: [],            // {id,name,court:1|2, g:gamesFor, ga:gamesAgainst, w, l, matches, lastRound}
-  matches: [],            // [{id,court,round,teamA:[id,id],teamB:[id,id],scoreA,scoreB,done}]
-};
+/* Americano por cancha — una sola partida abierta por cancha, máx. 8 jugadores por cancha
+   Mantiene tablas separadas y permite, al terminar el americano por cancha, crear playoff.
+*/
 
-const el = sel => document.querySelector(sel);
-const els = sel => [...document.querySelectorAll(sel)];
-
-/***** Utils *****/
-function uid(){ return Math.random().toString(36).slice(2,9); }
-function byCourt(c){ return p => p.court === c; }
-function playersOf(court){ return state.players.filter(byCourt(court)); }
-
-function safeParseInt(v){ const n = parseInt(v,10); return Number.isFinite(n)?n:0; }
-
-/***** Render Top *****/
-function initTop(){
-  el('#roomCode').textContent = state.room;
-  if(!location.hash) location.hash = state.room;
-
-  el('#copyRoom').onclick = () => {
-    navigator.clipboard.writeText(location.href);
-    el('#copyRoom').textContent = 'Copiado';
-    setTimeout(()=>el('#copyRoom').textContent='Copiar',900);
+(function(){
+  // ---------- Estado ----------
+  const state = {
+    room: makeRoomCode(),
+    goal: 3,
+    courts: 1,
+    roundGlobal: 1,
+    // por cancha
+    players: { 1: [], 2: [] },               // ["a","b",...]
+    standings: { 1: {}, 2: {} },             // {name:{pts:0,w:0,l:0,played:0,lastRound:0}}
+    round: { 1: 1, 2: 1 },
+    queue: { 1: [], 2: [] },                 // cola de partidos (cada elemento => {a:[p1,p2], b:[p3,p4], done:false})
+    openMatch: { 1: null, 2: null },         // el partido que se está jugando (o null)
+    finished: { 1: false, 2: false }         // true cuando se jugaron todos los encuentros
   };
 
-  const cs = el('#courtsSelect');
-  cs.value = String(state.courts);
-  cs.onchange = () => {
-    state.courts = safeParseInt(cs.value);
-    el('#c2Head').style.display = state.courts===2 ? '' : 'none';
-    el('#tableC2').style.display = state.courts===2 ? '' : 'none';
+  // ---------- Utilidades ----------
+  function makeRoomCode(){
+    return (Math.random().toString(36).slice(2, 8));
+  }
+  function $(sel){ return document.querySelector(sel); }
+  function el(tag, attrs={}, children=[]){
+    const n = document.createElement(tag);
+    Object.entries(attrs).forEach(([k,v])=>{
+      if(k==="class") n.className = v; else if(k==="text") n.textContent=v; else n.setAttribute(k,v);
+    });
+    children.forEach(c=>n.appendChild(c));
+    return n;
+  }
+  function shuffle(a){
+    for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+    return a;
+  }
+  const uniq = (arr)=>[...new Set(arr.map(s=>s.trim()).filter(Boolean))];
+
+  // ---------- Inicialización UI ----------
+  $("#roomCode").textContent = state.room;
+  $("#copyRoom").onclick = () => {
+    navigator.clipboard.writeText(location.href.split("#")[0]+"#"+state.room).catch(()=>{});
+  };
+
+  // selects
+  $("#goalSelect").value = "3";
+  $("#goalSelect").addEventListener("change", e=>{
+    state.goal = parseInt(e.target.value,10);
+  });
+
+  $("#courtsSelect").addEventListener("change", e=>{
+    state.courts = parseInt(e.target.value,10);
+    $("#row-c2").classList.toggle("hidden", state.courts===1);
     renderAll();
-  };
-
-  const ts = el('#targetSelect');
-  ts.value = String(state.target);
-  ts.onchange = () => { state.target = safeParseInt(ts.value); renderAll(); };
-
-  const pm = el('#playoffMode');
-  pm.value = state.playoffMode;
-  pm.onchange = () => { state.playoffMode = pm.value; };
-}
-
-function renderAll(){
-  renderPlayers();
-  renderStandings(1);
-  if(state.courts===2) renderStandings(2);
-  renderRoundHeader();
-  renderMatches();
-}
-
-/***** Jugadores *****/
-function renderPlayers(){
-  const list = el('#playersList');
-  list.innerHTML = '';
-  state.players.forEach(p=>{
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <div class="left">
-        <span class="badge">${p.name}</span>
-        <select data-id="${p.id}" class="courtSel">
-          <option value="1" ${p.court===1?'selected':''}>1</option>
-          <option value="2" ${p.court===2?'selected':''}>2</option>
-        </select>
-      </div>
-      <button data-id="${p.id}" class="ghost">x</button>
-    `;
-    list.appendChild(li);
   });
 
-  els('.courtSel').forEach(s=>{
-    s.onchange = (e)=>{
-      const id = e.target.dataset.id;
-      const pl = state.players.find(x=>x.id===id);
-      pl.court = safeParseInt(e.target.value);
-      renderAll();
-    };
-  });
+  // Añadir jugadores por cancha (máx. 8)
+  $("#addPlayer1").onclick = ()=> addPlayer(1, $("#playerInput1").value);
+  $("#addPlayer2").onclick = ()=> addPlayer(2, $("#playerInput2").value);
+  $("#playerInput1").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#addPlayer1").click(); });
+  $("#playerInput2").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#addPlayer2").click(); });
 
-  els('#playersList .ghost').forEach(b=>{
-    b.onclick = ()=>{
-      const id = b.dataset.id;
-      state.players = state.players.filter(p=>p.id!==id);
-      renderAll();
-    };
-  });
-}
+  $("#reset1").onclick = ()=> resetCourt(1);
+  $("#reset2").onclick = ()=> resetCourt(2);
 
-function attachPlayerUI(){
-  el('#addPlayerBtn').onclick = ()=>{
-    const name = el('#playerInput').value.trim();
+  $("#gen1").onclick = ()=> generateIfNeeded(1);
+  $("#gen2").onclick = ()=> generateIfNeeded(2);
+
+  $("#buildPlayoff").onclick = ()=> alert("Playoff por canchas: aquí puedes mezclar top por cancha (p.ej., 1-2 de C1 + 1-2 de C2 → semis; 1-4 de cada → cuartos). Esta parte se engancha cuando lo pidas.");
+
+  // ---------- Lógica de Jugadores ----------
+  function addPlayer(court, nameRaw){
+    const name = (nameRaw||"").trim();
     if(!name) return;
-    const court = state.courts===1 ? 1 : (playersOf(1).length<=playersOf(2).length?1:2);
-    state.players.push({id:uid(), name, court, g:0, ga:0, w:0, l:0, matches:0, lastRound:0});
-    el('#playerInput').value = '';
-    renderAll();
-  };
-  el('#resetBtn').onclick = ()=>{
-    if(!confirm('¿Seguro? Se borrará la sesión.')) return;
-    state.players = [];
-    state.matches = [];
-    state.round = 1;
-    state.stage = 'group';
-    renderAll();
-  };
-}
 
-/***** Standings por cancha *****/
-function standings(court){
-  const rows = playersOf(court).map(p=>({
-    id:p.id, name:p.name,
-    pts:p.g, jg:p.w, jp:p.l, pj:p.matches, last:p.lastRound
-  }));
-  rows.sort((a,b)=> b.pts - a.pts || b.jg - a.jg || a.jp - b.jp || a.last - b.last || a.name.localeCompare(b.name));
-  return rows;
-}
-
-function renderStandings(court){
-  const tb = el(court===1 ? '#tableC1 tbody' : '#tableC2 tbody');
-  const rows = standings(court);
-  tb.innerHTML = rows.map((r,i)=>`
-    <tr>
-      <td>${i+1}</td>
-      <td>${r.name}</td>
-      <td>${r.pts}</td>
-      <td>${r.jg}</td>
-      <td>${r.jp}</td>
-      <td>${r.pj}</td>
-      <td>${r.last}</td>
-    </tr>
-  `).join('');
-}
-
-/***** Partidos (render) *****/
-function renderRoundHeader(){
-  el('#roundBadge').textContent = state.round;
-  if(state.stage==='group'){
-    el('#roundTitle').textContent = `Partidos (ronda ${state.round})`;
-  }else{
-    el('#roundTitle').textContent = `Eliminatoria (ronda ${state.round})`;
-  }
-}
-
-function renderMatches(){
-  const box = el('#matches');
-  const list = state.matches.filter(m=>m.round===state.round);
-  box.innerHTML = '';
-  if(!list.length){
-    // mostrar CTA de playoff si terminó grupo
-    if(state.stage==='group'){
-      const allClosed = groupFinished();
-      el('#playoffBtn').style.display = allClosed ? '' : 'none';
-      el('#playoffBtn').textContent = suggestPlayoffLabel();
-    }else{
-      el('#playoffBtn').style.display = 'none';
-    }
-    return;
-  }
-  el('#playoffBtn').style.display = 'none';
-
-  list.forEach(m=>{
-    const card = document.createElement('div');
-    card.className='card';
-    const a = m.teamA.map(id=>nameOf(id)).join(' ');
-    const b = m.teamB.map(id=>nameOf(id)).join(' ');
-    card.innerHTML = `
-      <div class="meta">Cancha ${m.court} • ${state.stage==='group'?'Americano':'Eliminatoria'}</div>
-      <div class="vs">
-        <span class="tag">${a}</span>
-        <span>VS</span>
-        <span class="tag">${b}</span>
-        <div class="mark">
-          <span class="muted">Marcador (a ${state.target}):</span>
-          <input class="score" type="number" min="0" value="${m.scoreA??0}" data-mid="${m.id}" data-side="A"/>
-          <span>–</span>
-          <input class="score" type="number" min="0" value="${m.scoreB??0}" data-mid="${m.id}" data-side="B"/>
-          <button class="primary" data-save="${m.id}">Guardar resultado</button>
-        </div>
-      </div>
-    `;
-    box.appendChild(card);
-  });
-
-  els('input.score').forEach(inp=>{
-    inp.oninput = ()=>{
-      const id = inp.dataset.mid; const side = inp.dataset.side;
-      const m = state.matches.find(x=>x.id===id);
-      const val = safeParseInt(inp.value);
-      if(side==='A') m.scoreA = val; else m.scoreB = val;
-    };
-  });
-
-  els('[data-save]').forEach(btn=>{
-    btn.onclick = ()=>{
-      const id = btn.dataset.save;
-      const m = state.matches.find(x=>x.id===id);
-      saveMatch(m);
-    };
-  });
-}
-
-function nameOf(id){
-  const p = state.players.find(x=>x.id===id);
-  return p? p.name : '?';
-}
-
-/***** Lógica de Americano *****/
-
-/* Sencillo: intentamos crear dos equipos por cancha sin repetir emparejamientos
-   clave por partido: teamA(team of 2) vs teamB(team of 2) sin importar el orden */
-function groupFinished(){
-  if(state.courts===1){
-    const P = playersOf(1).length;
-    const theoreticalPairs = P*(P-1)/2; // pares 2
-    const closed = state.matches.filter(m=>m.court===1 && m.done).length;
-    // no forzamos exacto; dejamos botón de playoff cuando ya no haya “abiertos”
-    const opens = state.matches.some(m=>m.court===1 && m.round===state.round && !m.done);
-    return !opens;
-  }else{
-    const opens = state.matches.some(m=>m.round===state.round && !m.done);
-    return !opens;
-  }
-}
-
-function genNextRound(){
-  if(state.stage!=='group') return;
-  const newMatches = [];
-
-  for(let c=1;c<=state.courts;c++){
-    const plist = playersOf(c);
-    if(plist.length < 4) continue;
-
-    // Genera una ronda de 2 partidos (o 1 si hay 4-5 jugadores)
-    const combos = nextDoublesCombos(c, plist);
-    combos.forEach(teams=>{
-      newMatches.push({
-        id: uid(),
-        court: c,
-        round: state.round,
-        teamA: teams[0],
-        teamB: teams[1],
-        scoreA: 0, scoreB: 0,
-        done: false
-      });
-    });
-  }
-
-  if(!newMatches.length){
-    alert('No hay partidos abiertos en esta ronda. Pulsa “Crear eliminatoria”.');
-    return;
-  }
-  state.matches.push(...newMatches);
-  renderAll();
-}
-
-// memoria de partidos jugados (key sin orden)
-function pairKey(court,a,b){
-  const key = [...a,...b].map(id=>state.players.find(p=>p.id===id).name).sort().join('-');
-  return `${court}|${key}`;
-}
-function hasPlayed(court,a,b){
-  const k = pairKey(court,a,b);
-  return state.matches.some(m=>m.court===court && m.done && pairKey(court,m.teamA,m.teamB)===k);
-}
-
-function nextDoublesCombos(court, plist){
-  const ids = plist.map(p=>p.id);
-  // intenta formar equipos simples: (0,1) vs (2,3), (4,5) vs (6,7)...
-  const teams = [];
-  for(let i=0;i+3<ids.length;i+=4){
-    const a=[ids[i],ids[i+1]], b=[ids[i+2],ids[i+3]];
-    if(!hasPlayed(court,a,b)) teams.push([a,b]);
-  }
-  if(!teams.length && ids.length>=4){
-    // fallback: barajar
-    const shuffled = ids.slice().sort(()=>Math.random()-0.5);
-    const a=[shuffled[0],shuffled[1]], b=[shuffled[2],shuffled[3]];
-    if(!hasPlayed(court,a,b)) teams.push([a,b]);
-  }
-  return teams;
-}
-
-/***** Guardar resultados *****/
-function saveMatch(m){
-  const tgt = state.target;
-  const a = safeParseInt(m.scoreA);
-  const b = safeParseInt(m.scoreB);
-  if(a===b || (a<tgt && b<tgt)){
-    alert(`Marcador inválido. La meta es a ${tgt} y debe haber ganador.`);
-    return;
-  }
-  m.done = true;
-
-  const pa = m.teamA.map(id=> state.players.find(p=>p.id===id));
-  const pb = m.teamB.map(id=> state.players.find(p=>p.id===id));
-
-  pa.forEach(p=>{ p.g += a; p.ga += b; p.w += (a>b?1:0); p.l += (b>a?1:0); p.matches++; p.lastRound = state.round; });
-  pb.forEach(p=>{ p.g += b; p.ga += a; p.w += (b>a?1:0); p.l += (a>b?1:0); p.matches++; p.lastRound = state.round; });
-
-  // ¿se cerró toda la ronda?
-  const stillOpen = state.matches.some(x=>x.round===state.round && !x.done);
-  if(!stillOpen){
-    state.round++;
-  }
-  renderAll();
-}
-
-/***** Playoff *****/
-function suggestPlayoffLabel(){
-  if(state.courts===2){
-    return 'Crear eliminatoria (Cuartos / Semis por cancha)';
-  }
-  return 'Crear eliminatoria';
-}
-
-function createPlayoff(){
-  // decidir si cuartos o semis
-  const n1 = playersOf(1).length;
-  const n2 = playersOf(2).length;
-  const canSemisByCourt = (n1>=2 && n2>=2);
-  const canQuartersByCourt = (n1>=4 && n2>=4);
-
-  let mode = state.playoffMode;
-  if(mode==='auto'){
-    if(state.courts===2){
-      mode = canQuartersByCourt ? 'quartersCross' : (canSemisByCourt ? 'semisCross' : 'semis8');
-    }else{
-      // single court auto: si >=8 => cuartos, si >=4 => semis
-      const n = playersOf(1).length;
-      mode = (n>=8 ? 'quarters8' : 'semis8');
-    }
-  }
-
-  state.stage='playoff';
-  state.round=1;
-  state.matches = [];
-
-  if(state.courts===2 && (mode==='quartersCross' || mode==='semisCross')){
-    genCrossCourtPlayoff(mode);
-  }else{
-    genSingleCourtPlayoff(mode);
-  }
-  renderAll();
-}
-
-function genSingleCourtPlayoff(mode){
-  const rank = standings(1).map(r=>r.id);
-  let pairs=[];
-  if(mode==='quarters8' && rank.length>=8){
-    // 1-8,2-7,3-6,4-5 (como clásico) o tu seed 1–3 vs 5–7…
-    pairs = [
-      [[rank[0],rank[7]],[rank[3],rank[4]]],
-      [[rank[1],rank[6]],[rank[2],rank[5]]],
-    ];
-  }else{
-    // Semifinales (Top-8) corregidas a (1–3 vs 2–4) y (5–7 vs 6–8)
-    const seeded = seedTeamsTop8(rank);
-    if(seeded.length){
-      pairs = [ [seeded[0],seeded[1]], [seeded[2],seeded[3]] ];
-    }else{
-      // si no hay 8, intenta con 4 (1–3 vs 2–4)
-      if(rank.length>=4){
-        const a=[rank[0],rank[2]], b=[rank[1],rank[3]];
-        pairs = [ [a,b] ];
-      }
-    }
-  }
-  state.matches = pairs.map((pp,i)=>({
-    id:uid(), court:1, round:1,
-    teamA:pp[0], teamB:pp[1],
-    scoreA:0, scoreB:0, done:false
-  }));
-}
-
-function genCrossCourtPlayoff(mode){
-  // standings por cancha
-  const A = standings(1).map(r=>r.id);
-  const B = standings(2).map(r=>r.id);
-
-  const games = [];
-  if(mode==='quartersCross'){
-    // requiere 4 por cancha mínimo
-    if(A.length<4 || B.length<4){
-      alert('No hay suficientes jugadores por cancha para cuartos. Se intentará semifinales por cancha.');
-      return genCrossCourtPlayoff('semisCross');
-    }
-    // 1A-4B, 2A-3B, 1B-4A, 2B-3A
-    const pairs = [
-      [[A[0],A[3]],[B[1],B[2]]], // (1A,4A) vs (2B,3B) — OJO: jugamos con parejas de 2 jugadores; usaremos cruces en equipos
-    ];
-    // Mejor: convertir cruces en equipos con formato [jugA, jugB]
-    const list = [
-      [[A[0],A[1]],[B[2],B[3]]], // 1A-2A vs 3B-4B
-      [[A[2],A[3]],[B[0],B[1]]], // 3A-4A vs 1B-2B
-      [[B[0],B[1]],[A[2],A[3]]], // 1B-2B vs 3A-4A (lado B)
-      [[B[2],B[3]],[A[0],A[1]]], // 3B-4B vs 1A-2A
-    ];
-    list.forEach(pp=>{
-      games.push({ id:uid(), court:1, round:1, teamA:pp[0], teamB:pp[1], scoreA:0, scoreB:0, done:false });
-    });
-  }else{
-    // Semifinales cruzadas: (1A–2A) vs (1B–2B)
-    if(A.length<2 || B.length<2){
-      alert('Se necesitan al menos 2 jugadores por cancha para semifinales cruzadas.');
+    if(state.players[court].length>=8){
+      alert("Máximo 8 jugadores por cancha.");
       return;
     }
-    const s1 = [[A[0],A[1]],[B[0],B[1]]];
-    const s2 = [[A[0],A[1]],[B[0],B[1]]]; // dos canchas disponibles; si quieres en una sola, deja solo s1
-    games.push({ id:uid(), court:1, round:1, teamA:s1[0], teamB:s1[1], scoreA:0, scoreB:0, done:false });
-    games.push({ id:uid(), court:2, round:1, teamA:s1[0], teamB:s1[1], scoreA:0, scoreB:0, done:false });
+    if(state.players[1].includes(name) || state.players[2].includes(name)){
+      alert("Ese nombre ya existe en alguna cancha.");
+      return;
+    }
+    state.players[court].push(name);
+    // standings base
+    state.standings[court][name] = { pts:0, w:0, l:0, played:0, lastRound:0 };
+    // limpiar input
+    if(court===1) $("#playerInput1").value=""; else $("#playerInput2").value="";
+    // al añadir jugadores, se invalida planificación previa
+    state.queue[court] = [];
+    state.openMatch[court] = null;
+    state.finished[court] = false;
+    state.round[court] = 1;
+    renderAll();
   }
 
-  state.matches = games;
-}
+  function removePlayer(court, name){
+    state.players[court] = state.players[court].filter(n=>n!==name);
+    delete state.standings[court][name];
+    // invalidar planificación
+    state.queue[court] = [];
+    state.openMatch[court] = null;
+    state.finished[court] = false;
+    state.round[court] = 1;
+    renderAll();
+  }
 
-function seedTeamsTop8(rank){
-  if(rank.length<8) return [];
-  const top4 = rank.slice(0,4);   // 1,2,3,4
-  const low4 = rank.slice(4,8);   // 5,6,7,8
-  // (1–3) vs (2–4) y (5–7) vs (6–8)
-  return [
-    [top4[0],top4[2]],
-    [top4[1],top4[3]],
-    [low4[0],low4[2]],
-    [low4[1],low4[3]],
-  ];
-}
+  function resetCourt(court){
+    state.players[court] = [];
+    state.standings[court] = {};
+    state.queue[court] = [];
+    state.openMatch[court] = null;
+    state.finished[court] = false;
+    state.round[court] = 1;
+    renderAll();
+  }
 
-/***** Wiring Botones *****/
-function attachMainButtons(){
-  el('#genBtn').onclick = genNextRound;
-  el('#playoffBtn').onclick = createPlayoff;
-}
+  // ---------- Generación de Partidos (por cancha) ----------
+  function generateIfNeeded(court){
+    const n = state.players[court].length;
+    if(n<4){
+      alert("Necesitas al menos 4 jugadores para dobles.");
+      return;
+    }
+    // si no hay cola ni partido abierto, planificamos todo el americano de esa cancha
+    if(!state.openMatch[court] && state.queue[court].length===0){
+      state.queue[court] = buildAmericanQueue(state.players[court]);
+    }
+    // si no hay partido abierto, sacamos el siguiente
+    if(!state.openMatch[court]){
+      state.openMatch[court] = state.queue[court].shift() || null;
+    }
+    renderAll();
+  }
 
-/***** Init *****/
-function boot(){
-  initTop();
-  attachMainButtons();
-  attachPlayerUI();
-  // ejemplo: (no agrego nada; usas los tuyos)
+  // Construye TODA la cola de partidos para una cancha (dobles), sin repetir pareja
+  function buildAmericanQueue(players){
+    // 1) todas las parejas posibles (combinaciones de 2)
+    const pairs = [];
+    for(let i=0;i<players.length;i++){
+      for(let j=i+1;j<players.length;j++){
+        pairs.push([players[i], players[j]]);
+      }
+    }
+    // 2) todos los enfrentamientos de parejas disjuntas
+    const matches = [];
+    for(let i=0;i<pairs.length;i++){
+      for(let j=i+1;j<pairs.length;j++){
+        const a = pairs[i], b = pairs[j];
+        if(a[0]!==b[0] && a[0]!==b[1] && a[1]!==b[0] && a[1]!==b[1]){
+          matches.push({ a:[a[0],a[1]], b:[b[0],b[1]], done:false });
+        }
+      }
+    }
+    // 3) barajamos para diversidad
+    shuffle(matches);
+    return matches;
+  }
+
+  // ---------- Guardar resultado ----------
+  function saveResult(court, aScore, bScore){
+    const m = state.openMatch[court];
+    if(!m) return;
+
+    const sA = parseInt(aScore.value,10)||0;
+    const sB = parseInt(bScore.value,10)||0;
+    if(sA===0 && sB===0){ alert("Ingresa marcador."); return; }
+    if(sA===sB){ alert("No puede empatar."); return; }
+
+    // Aplicar a standings (pts = games ganados)
+    const allPlayers = [...m.a, ...m.b];
+    allPlayers.forEach(p=>{
+      const st = state.standings[court][p];
+      if(st){ st.played += 1; st.lastRound = state.round[court]; }
+    });
+
+    m.done = true;
+    if(sA>sB){
+      m.winner = m.a;
+      m.loser = m.b;
+      m.a.forEach(p=>{ state.standings[court][p].w += 1; state.standings[court][p].pts += sA; });
+      m.b.forEach(p=>{ state.standings[court][p].l += 1; state.standings[court][p].pts += sB; });
+    }else{
+      m.winner = m.b;
+      m.loser = m.a;
+      m.b.forEach(p=>{ state.standings[court][p].w += 1; state.standings[court][p].pts += sB; });
+      m.a.forEach(p=>{ state.standings[court][p].l += 1; state.standings[court][p].pts += sA; });
+    }
+
+    // cerrar partido, avanzar ronda, abrir siguiente si existe
+    state.openMatch[court] = null;
+    state.round[court] += 1;
+
+    if(state.queue[court].length>0){
+      state.openMatch[court] = state.queue[court].shift();
+    }else{
+      state.finished[court] = true;
+    }
+    // actualizar barra playoff si ambas canchas finalizaron
+    checkPlayoffReady();
+    renderAll();
+  }
+
+  function checkPlayoffReady(){
+    const ready = (state.courts===1 && state.finished[1]) ||
+                  (state.courts===2 && state.finished[1] && state.finished[2]);
+    $("#playoffBar").classList.toggle("hidden", !ready);
+  }
+
+  // ---------- Render ----------
+  function renderAll(){
+    $("#globalRound").textContent = Math.max(state.round[1], state.round[2]);
+
+    // Jugadores
+    renderPlayersList(1);
+    renderPlayersList(2);
+
+    // Partidos (sólo el abierto por cancha)
+    renderMatches(1);
+    renderMatches(2);
+
+    // Tablas
+    renderTable(1);
+    renderTable(2);
+  }
+
+  function renderPlayersList(court){
+    const ul = court===1 ? $("#playersList1") : $("#playersList2");
+    ul.innerHTML = "";
+    state.players[court].forEach(name=>{
+      const li = el("li",{},[
+        el("div",{class:"left"},[
+          el("span",{class:"tag",text:name}),
+          el("span",{class:"badge",text:`C${court}`})
+        ]),
+        el("div",{},[
+          el("button",{class:"danger",text:"x"})
+        ])
+      ]);
+      li.querySelector("button").onclick = ()=> removePlayer(court, name);
+      ul.appendChild(li);
+    });
+  }
+
+  function renderMatches(court){
+    const box = court===1 ? $("#matches1") : $("#matches2");
+    box.innerHTML = "";
+
+    if(state.players[court].length<4){
+      box.appendChild(el("div",{class:"muted",text:"Agrega al menos 4 jugadores para empezar."}));
+      return;
+    }
+
+    const m = state.openMatch[court];
+    if(!m){
+      const msg = state.finished[court] ? "Americano completado. Puedes crear eliminatoria."
+                                        : "Pulsa “Generar partidos”.";
+      box.appendChild(el("div",{class:"muted",text:msg}));
+      return;
+    }
+
+    // tarjeta del partido abierto
+    const card = el("div",{class:"card"},[
+      el("div",{class:"meta",text:`Cancha ${court} · Ronda ${state.round[court]}`}),
+      // vs
+      (()=> {
+        const row = el("div",{class:"row",style:"gap:.5rem;align-items:center"});
+        const tag = (n)=> el("span",{class:"tag",text:n});
+        row.appendChild(tag(m.a[0])); row.appendChild(tag(m.a[1]));
+        row.appendChild(el("span",{class:"muted",text:"VS"}));
+        row.appendChild(tag(m.b[0])); row.appendChild(tag(m.b[1]));
+        return row;
+      })(),
+      // marcador
+      (()=> {
+        const mark = el("div",{class:"mark"});
+        const inA = el("input",{class:"score",type:"number",min:"0",value:"0"});
+        const inB = el("input",{class:"score",type:"number",min:"0",value:"0"});
+        mark.appendChild(el("span",{class:"muted",text:`Marcador (a ${state.goal}):`}));
+        mark.appendChild(inA);
+        mark.appendChild(el("span",{text:"-"}));
+        mark.appendChild(inB);
+        const btn = el("button",{class:"primary",text:"Guardar resultado"});
+        btn.onclick = ()=> saveResult(court, inA, inB);
+        const wrap = el("div",{class:"row",style:"justify-content:space-between;gap:.5rem"});
+        wrap.appendChild(mark); wrap.appendChild(btn);
+        return wrap;
+      })()
+    ]);
+    box.appendChild(card);
+
+    // cola pendiente (info)
+    if(state.queue[court].length>0){
+      box.appendChild(el("div",{class:"muted",text:`Pendientes: ${state.queue[court].length} partidos`}));
+    }
+  }
+
+  function renderTable(court){
+    const tbody = court===1 ? $("#table1") : $("#table2");
+    tbody.innerHTML = "";
+
+    const rows = Object.entries(state.standings[court]).map(([name,st])=>({
+      name,
+      pts: st.pts||0,
+      w: st.w||0,
+      l: st.l||0,
+      played: st.played||0,
+      lastRound: st.lastRound||0
+    }));
+
+    rows.sort((a,b)=>{
+      if(b.pts!==a.pts) return b.pts-a.pts;
+      if(b.w!==a.w) return b.w-a.w;
+      return a.name.localeCompare(b.name);
+    });
+
+    rows.forEach((r,idx)=>{
+      const tr = el("tr",{},[
+        el("td",{text:String(idx+1)}),
+        el("td",{text:r.name}),
+        el("td",{text:String(r.pts)}),
+        el("td",{text:String(r.w)}),
+        el("td",{text:String(r.l)}),
+        el("td",{text:String(r.played)}),
+        el("td",{text:String(r.lastRound)})
+      ]);
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Primera pintura
   renderAll();
-}
-boot();
+})();
