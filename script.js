@@ -1,345 +1,334 @@
-/*********************************************************
- *  Americano Padel – módulo UI + Eliminatorias
- *  NOTAS:
- *  - Conecta los stubs a tus funciones existentes.
- *  - Mantiene 1 partido abierto por cancha.
- *  - Valida marcador con la "meta".
- **********************************************************/
+/* Americano por cancha — una sola partida abierta por cancha, máx. 8 jugadores por cancha
+   Mantiene tablas separadas y permite, al terminar el americano por cancha, crear playoff.
+*/
 
-/* =========================
-   ESTADO BÁSICO (puedes reutilizar el tuyo)
-   ========================= */
-
-const state = {
-  // ejemplo de listas de jugadores por cancha (reemplaza por tu fuente real)
-  players: {
-    1: [], // ['a','b',...]
-    2: []
-  },
-  // si tienes standings en memoria, puedes guardarlos aquí
-  // standings: { 1: [...], 2: [...] }
-};
-
-/* =========================
-   HOOKS CON TU LÓGICA EXISTENTE
-   ========================= */
-
-/** Genera siguiente partido de Americano para una cancha (tu lógica). */
-function generateAmericanoForCourt(court) {
-  // TODO: conecta con tu generador actual de Americano.
-  //   Debe renderizar exactamente 1 partido en #matchesCourt{court}
-  //   con inputs de score y botón "Guardar resultado".
-  //   Cuando llames a "saveAmericanoResult" desde ese botón,
-  //   tu lógica debe actualizar standings, jugadores, etc.
-  alert(`(stub) Generar partidos Americano — Cancha ${court}. Conecta tu función real.`);
-}
-
-/** Guarda el resultado de Americano (tu lógica). */
-function saveAmericanoResult(court, teamA, teamB, sA, sB) {
-  // TODO: integra tu lógica de guardado/suma de puntos.
-  console.log('(stub) saveAmericanoResult', { court, teamA, teamB, sA, sB });
-  // Al terminar, puedes volver a llamar generateAmericanoForCourt(court)
-}
-
-/** Render de standings (si los traes de otro lado). */
-function renderStandings(court, rows /* [{name,pts,...}] */) {
-  const table = document.getElementById(court === 1 ? 'standingsCourt1' : 'standingsCourt2');
-  if (!table) return;
-  const tbody = table.querySelector('tbody');
-  tbody.innerHTML = '';
-  rows.forEach((r, idx) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${idx+1}</td>
-      <td>${r.name}</td>
-      <td>${r.pts ?? 0}</td>
-      <td>${r.jg ?? 0}</td>
-      <td>${r.jp ?? 0}</td>
-      <td>${r.partidos ?? 0}</td>
-      <td>${r.last ?? 0}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-/** Render pills de jugadores (tu UI actual). */
-function renderPlayers(court) {
-  const ul = document.getElementById(court === 1 ? 'playersCourt1' : 'playersCourt2');
-  if (!ul) return;
-  ul.innerHTML = '';
-  state.players[court].forEach(name => {
-    const li = document.createElement('li');
-    li.className = 'pill';
-    li.innerHTML = `
-      <div class="left">
-        <span class="tag">${name}</span>
-        <span class="badge">C${court}</span>
-      </div>
-      <button class="danger small">x</button>`;
-    li.querySelector('button').addEventListener('click', () => {
-      state.players[court] = state.players[court].filter(n => n !== name);
-      renderPlayers(court);
-    });
-    ul.appendChild(li);
-  });
-}
-
-/* =========================
-   SELECTORES / CONTROLES
-   ========================= */
-
-function getCourtsCount() {
-  const el = document.getElementById('courtsSelect');
-  return el ? parseInt(el.value, 10) : 1;
-}
-function getMeta() {
-  const el = document.getElementById('metaSelect');
-  return el ? parseInt(el.value, 10) : 3;
-}
-
-/* Visibilidad de Cancha 2 */
-function updateCourtsLayout() {
-  const count = getCourtsCount();
-  const w2 = document.getElementById('court2Wrap');
-  if (w2) w2.style.display = (count >= 2) ? '' : 'none';
-}
-document.getElementById('courtsSelect')?.addEventListener('change', updateCourtsLayout);
-updateCourtsLayout();
-
-/* Límite 8 por cancha */
-function canAddToCourt(court) {
-  return state.players[court].length < 8;
-}
-
-/* Inputs agregar jugadores */
-document.getElementById('addC1')?.addEventListener('click', () => {
-  const name = (document.getElementById('playerNameC1').value || '').trim();
-  if (!name) return;
-  if (!canAddToCourt(1)) { alert('Máximo 8 jugadores en Cancha 1'); return; }
-  if (!state.players[1].includes(name)) state.players[1].push(name);
-  document.getElementById('playerNameC1').value = '';
-  renderPlayers(1);
-});
-document.getElementById('addC2')?.addEventListener('click', () => {
-  const name = (document.getElementById('playerNameC2').value || '').trim();
-  if (!name) return;
-  if (!canAddToCourt(2)) { alert('Máximo 8 jugadores en Cancha 2'); return; }
-  if (!state.players[2].includes(name)) state.players[2].push(name);
-  document.getElementById('playerNameC2').value = '';
-  renderPlayers(2);
-});
-
-/* Reinicios por cancha */
-document.getElementById('resetC1')?.addEventListener('click', () => {
-  state.players[1] = [];
-  renderPlayers(1);
-  document.getElementById('matchesCourt1').innerHTML = '';
-  renderStandings(1, []);
-});
-document.getElementById('resetC2')?.addEventListener('click', () => {
-  state.players[2] = [];
-  renderPlayers(2);
-  document.getElementById('matchesCourt2').innerHTML = '';
-  renderStandings(2, []);
-});
-
-/* Generar partidos de Americano (usa tu generador real) */
-document.getElementById('genMatchesC1')?.addEventListener('click', () => generateAmericanoForCourt(1));
-document.getElementById('genMatchesC2')?.addEventListener('click', () => generateAmericanoForCourt(2));
-
-/* =========================
-   STANDINGS LECTURA (desde DOM)
-   ========================= */
-
-/** Lee standings de la tabla y devuelve lista ordenada [{name,pts}, ...] */
-function getStandingsForCourt(court) {
-  const tableEl = document.getElementById(court === 1 ? 'standingsCourt1' : 'standingsCourt2');
-  const rows = [...(tableEl?.querySelectorAll('tbody tr') || [])];
-  const list = rows.map(tr => {
-    const tds = tr.querySelectorAll('td');
-    return {
-      name: (tds[1]?.textContent || '').trim(),
-      pts : parseInt(tds[2]?.textContent || '0', 10) || 0
-    };
-  });
-  list.sort((a, b) => b.pts - a.pts);
-  return list;
-}
-
-/* =========================
-   RENDER PARTIDOS "1 ABIERTO"
-   ========================= */
-
-function renderSingleMatchCard(court, title, pairA, pairB, onSave) {
-  const container = document.getElementById(court === 1 ? 'matchesCourt1' : 'matchesCourt2');
-  if (!container) return;
-
-  // "solo 1 abierto"
-  container.innerHTML = '';
-
-  const meta = getMeta();
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.innerHTML = `
-    <div class="meta">${title}</div>
-    <div class="vs">
-      ${pairA.map(p => `<span class="tag">${p}</span>`).join(' ')}
-      <span class="muted">vs</span>
-      ${pairB.map(p => `<span class="tag">${p}</span>`).join(' ')}
-      <div class="mark">
-        <label class="muted">Marcador (a ${meta}):</label>
-        <input type="number" min="0" class="score" id="sA" value="0">
-        <span class="muted">-</span>
-        <input type="number" min="0" class="score" id="sB" value="0">
-      </div>
-      <button class="primary" id="btnSave">Guardar resultado</button>
-    </div>
-  `;
-  container.appendChild(card);
-
-  card.querySelector('#btnSave')?.addEventListener('click', () => {
-    const sA = parseInt(card.querySelector('#sA').value || '0', 10);
-    const sB = parseInt(card.querySelector('#sB').value || '0', 10);
-    if (!validateScore(sA, sB)) return;
-    onSave({ sA, sB, pairA: [...pairA], pairB: [...pairB], court });
-  });
-}
-
-/* =========================
-   VALIDACIÓN META
-   ========================= */
-
-function validateScore(sA, sB) {
-  const meta = getMeta();
-  const aWin = (sA === meta) && (sB >= 0 && sB < meta);
-  const bWin = (sB === meta) && (sA >= 0 && sA < meta);
-  if (!aWin && !bWin) {
-    alert(`Marcador inválido. El ganador debe llegar a ${meta} y el rival quedar por debajo.`);
-    return false;
-  }
-  return true;
-}
-
-/* =========================
-   ELIMINATORIAS
-   ========================= */
-
-const nextSemiByCourt = { 1: null, 2: null };
-let pendingLowCrossSecond = null;
-
-/** Semifinales POR CANCHA (1,3 vs 2,4 y opcional 5,7 vs 6,8) */
-function createSemisByCourt(court) {
-  const list = getStandingsForCourt(court).map(x => x.name);
-  if (list.length < 4) {
-    alert('Se necesitan al menos 4 jugadores en la cancha para semifinales.');
-    return;
-  }
-
-  // TOP 4: 1,3 vs 2,4
-  const t1 = list[0], t2 = list[1], t3 = list[2], t4 = list[3];
-  const topSemi1A = [t1, t3], topSemi1B = [t2, t4];
-  renderSingleMatchCard(court, `Eliminatoria — Cancha ${court} · Semi 1`, topSemi1A, topSemi1B, saveElimResult);
-
-  // Bloque bajo si hay >=8
-  if (list.length >= 8) {
-    const b5 = list[4], b6 = list[5], b7 = list[6], b8 = list[7];
-    nextSemiByCourt[court] = {
-      title: `Eliminatoria — Cancha ${court} · Semi 2 (bajo)`,
-      pairA: [b5, b7],
-      pairB: [b6, b8]
-    };
-  } else {
-    nextSemiByCourt[court] = null;
-  }
-}
-
-/** Semifinales CRUZADAS entre 2 canchas */
-function createSemisCrossTwoCourts() {
-  if (getCourtsCount() < 2) {
-    alert('Selecciona 2 canchas para generar semifinales cruzadas.');
-    return;
-  }
-  const a = getStandingsForCourt(1).map(x => x.name);
-  const b = getStandingsForCourt(2).map(x => x.name);
-  if (a.length < 4 || b.length < 4) {
-    alert('Se requieren al menos 4 jugadores en cada cancha para cruzar semifinales.');
-    return;
-  }
-
-  // C1(1,3) vs C2(2,4)
-  renderSingleMatchCard(1, `Eliminatoria — Cruzada · Semi 1`, [a[0], a[2]], [b[1], b[3]], saveElimResult);
-  // C1(2,4) vs C2(1,3) (queda pendiente en C1)
-  nextSemiByCourt[1] = {
-    title: `Eliminatoria — Cruzada · Semi 2`,
-    pairA: [a[1], a[3]],
-    pairB: [b[0], b[2]]
+(function(){
+  // ---------- Estado ----------
+  const state = {
+    room: makeRoomCode(),
+    goal: 3,
+    courts: 1,
+    roundGlobal: 1,
+    // por cancha
+    players: { 1: [], 2: [] },               // ["a","b",...]
+    standings: { 1: {}, 2: {} },             // {name:{pts:0,w:0,l:0,played:0,lastRound:0}}
+    round: { 1: 1, 2: 1 },
+    queue: { 1: [], 2: [] },                 // cola de partidos (cada elemento => {a:[p1,p2], b:[p3,p4], done:false})
+    openMatch: { 1: null, 2: null },         // el partido que se está jugando (o null)
+    finished: { 1: false, 2: false }         // true cuando se jugaron todos los encuentros
   };
 
-  // Bajo si ambas tienen 8
-  if (a.length >= 8 && b.length >= 8) {
-    // Primero en C2:
-    nextSemiByCourt[2] = {
-      title: `Eliminatoria — Cruzada · Bajo 1`,
-      pairA: [a[4], a[6]], // C1(5,7)
-      pairB: [b[5], b[7]]  // C2(6,8)
-    };
-    // Después en C2:
-    pendingLowCrossSecond = {
-      title: `Eliminatoria — Cruzada · Bajo 2`,
-      pairA: [a[5], a[7]], // C1(6,8)
-      pairB: [b[4], b[6]]  // C2(5,7)
-    };
-  } else {
-    nextSemiByCourt[2] = null;
-    pendingLowCrossSecond = null;
+  // ---------- Utilidades ----------
+  function makeRoomCode(){
+    return (Math.random().toString(36).slice(2, 8));
   }
-}
-
-/** Guardar resultado de eliminatoria y encadenar la siguiente si aplica */
-function saveElimResult({ sA, sB, pairA, pairB, court }) {
-  // TODO: si quieres sumar algo a un historial de playoffs, hazlo aquí.
-  console.log('elim result', { court, pairA, sA, pairB, sB });
-
-  const nxt = nextSemiByCourt[court];
-  const container = document.getElementById(court === 1 ? 'matchesCourt1' : 'matchesCourt2');
-
-  if (nxt) {
-    renderSingleMatchCard(court, nxt.title, nxt.pairA, nxt.pairB, saveElimResult);
-    nextSemiByCourt[court] = null;
-  } else if (pendingLowCrossSecond && court === 2) {
-    renderSingleMatchCard(2, pendingLowCrossSecond.title, pendingLowCrossSecond.pairA, pendingLowCrossSecond.pairB, saveElimResult);
-    pendingLowCrossSecond = null;
-  } else {
-    if (container) container.innerHTML = '';
+  function $(sel){ return document.querySelector(sel); }
+  function el(tag, attrs={}, children=[]){
+    const n = document.createElement(tag);
+    Object.entries(attrs).forEach(([k,v])=>{
+      if(k==="class") n.className = v; else if(k==="text") n.textContent=v; else n.setAttribute(k,v);
+    });
+    children.forEach(c=>n.appendChild(c));
+    return n;
   }
-}
+  function shuffle(a){
+    for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+    return a;
+  }
+  const uniq = (arr)=>[...new Set(arr.map(s=>s.trim()).filter(Boolean))];
 
-/* =========================
-   BOTONES ELIMINATORIA
-   ========================= */
+  // ---------- Inicialización UI ----------
+  $("#roomCode").textContent = state.room;
+  $("#copyRoom").onclick = () => {
+    navigator.clipboard.writeText(location.href.split("#")[0]+"#"+state.room).catch(()=>{});
+  };
 
-document.getElementById('btnElimsCourt1')?.addEventListener('click', () => {
-  if (getCourtsCount() === 1) {
-    createSemisByCourt(1);
-  } else {
-    // con 2 canchas, también permitimos semis solo de cancha 1 si quieres
-    if (confirm('¿Crear eliminatoria solo para Cancha 1? (Aceptar = Solo C1, Cancelar = Cruzadas entre 2 canchas)')) {
-      createSemisByCourt(1);
-    } else {
-      createSemisCrossTwoCourts();
+  // selects
+  $("#goalSelect").value = "3";
+  $("#goalSelect").addEventListener("change", e=>{
+    state.goal = parseInt(e.target.value,10);
+  });
+
+  $("#courtsSelect").addEventListener("change", e=>{
+    state.courts = parseInt(e.target.value,10);
+    $("#row-c2").classList.toggle("hidden", state.courts===1);
+    renderAll();
+  });
+
+  // Añadir jugadores por cancha (máx. 8)
+  $("#addPlayer1").onclick = ()=> addPlayer(1, $("#playerInput1").value);
+  $("#addPlayer2").onclick = ()=> addPlayer(2, $("#playerInput2").value);
+  $("#playerInput1").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#addPlayer1").click(); });
+  $("#playerInput2").addEventListener("keydown", e=>{ if(e.key==="Enter") $("#addPlayer2").click(); });
+
+  $("#reset1").onclick = ()=> resetCourt(1);
+  $("#reset2").onclick = ()=> resetCourt(2);
+
+  $("#gen1").onclick = ()=> generateIfNeeded(1);
+  $("#gen2").onclick = ()=> generateIfNeeded(2);
+
+  $("#buildPlayoff").onclick = ()=> alert("Playoff por canchas: aquí puedes mezclar top por cancha (p.ej., 1-2 de C1 + 1-2 de C2 → semis; 1-4 de cada → cuartos). Esta parte se engancha cuando lo pidas.");
+
+  // ---------- Lógica de Jugadores ----------
+  function addPlayer(court, nameRaw){
+    const name = (nameRaw||"").trim();
+    if(!name) return;
+
+    if(state.players[court].length>=8){
+      alert("Máximo 8 jugadores por cancha.");
+      return;
+    }
+    if(state.players[1].includes(name) || state.players[2].includes(name)){
+      alert("Ese nombre ya existe en alguna cancha.");
+      return;
+    }
+    state.players[court].push(name);
+    // standings base
+    state.standings[court][name] = { pts:0, w:0, l:0, played:0, lastRound:0 };
+    // limpiar input
+    if(court===1) $("#playerInput1").value=""; else $("#playerInput2").value="";
+    // al añadir jugadores, se invalida planificación previa
+    state.queue[court] = [];
+    state.openMatch[court] = null;
+    state.finished[court] = false;
+    state.round[court] = 1;
+    renderAll();
+  }
+
+  function removePlayer(court, name){
+    state.players[court] = state.players[court].filter(n=>n!==name);
+    delete state.standings[court][name];
+    // invalidar planificación
+    state.queue[court] = [];
+    state.openMatch[court] = null;
+    state.finished[court] = false;
+    state.round[court] = 1;
+    renderAll();
+  }
+
+  function resetCourt(court){
+    state.players[court] = [];
+    state.standings[court] = {};
+    state.queue[court] = [];
+    state.openMatch[court] = null;
+    state.finished[court] = false;
+    state.round[court] = 1;
+    renderAll();
+  }
+
+  // ---------- Generación de Partidos (por cancha) ----------
+  function generateIfNeeded(court){
+    const n = state.players[court].length;
+    if(n<4){
+      alert("Necesitas al menos 4 jugadores para dobles.");
+      return;
+    }
+    // si no hay cola ni partido abierto, planificamos todo el americano de esa cancha
+    if(!state.openMatch[court] && state.queue[court].length===0){
+      state.queue[court] = buildAmericanQueue(state.players[court]);
+    }
+    // si no hay partido abierto, sacamos el siguiente
+    if(!state.openMatch[court]){
+      state.openMatch[court] = state.queue[court].shift() || null;
+    }
+    renderAll();
+  }
+
+  // Construye TODA la cola de partidos para una cancha (dobles), sin repetir pareja
+  function buildAmericanQueue(players){
+    // 1) todas las parejas posibles (combinaciones de 2)
+    const pairs = [];
+    for(let i=0;i<players.length;i++){
+      for(let j=i+1;j<players.length;j++){
+        pairs.push([players[i], players[j]]);
+      }
+    }
+    // 2) todos los enfrentamientos de parejas disjuntas
+    const matches = [];
+    for(let i=0;i<pairs.length;i++){
+      for(let j=i+1;j<pairs.length;j++){
+        const a = pairs[i], b = pairs[j];
+        if(a[0]!==b[0] && a[0]!==b[1] && a[1]!==b[0] && a[1]!==b[1]){
+          matches.push({ a:[a[0],a[1]], b:[b[0],b[1]], done:false });
+        }
+      }
+    }
+    // 3) barajamos para diversidad
+    shuffle(matches);
+    return matches;
+  }
+
+  // ---------- Guardar resultado ----------
+  function saveResult(court, aScore, bScore){
+    const m = state.openMatch[court];
+    if(!m) return;
+
+    const sA = parseInt(aScore.value,10)||0;
+    const sB = parseInt(bScore.value,10)||0;
+    if(sA===0 && sB===0){ alert("Ingresa marcador."); return; }
+    if(sA===sB){ alert("No puede empatar."); return; }
+
+    // Aplicar a standings (pts = games ganados)
+    const allPlayers = [...m.a, ...m.b];
+    allPlayers.forEach(p=>{
+      const st = state.standings[court][p];
+      if(st){ st.played += 1; st.lastRound = state.round[court]; }
+    });
+
+    m.done = true;
+    if(sA>sB){
+      m.winner = m.a;
+      m.loser = m.b;
+      m.a.forEach(p=>{ state.standings[court][p].w += 1; state.standings[court][p].pts += sA; });
+      m.b.forEach(p=>{ state.standings[court][p].l += 1; state.standings[court][p].pts += sB; });
+    }else{
+      m.winner = m.b;
+      m.loser = m.a;
+      m.b.forEach(p=>{ state.standings[court][p].w += 1; state.standings[court][p].pts += sB; });
+      m.a.forEach(p=>{ state.standings[court][p].l += 1; state.standings[court][p].pts += sA; });
+    }
+
+    // cerrar partido, avanzar ronda, abrir siguiente si existe
+    state.openMatch[court] = null;
+    state.round[court] += 1;
+
+    if(state.queue[court].length>0){
+      state.openMatch[court] = state.queue[court].shift();
+    }else{
+      state.finished[court] = true;
+    }
+    // actualizar barra playoff si ambas canchas finalizaron
+    checkPlayoffReady();
+    renderAll();
+  }
+
+  function checkPlayoffReady(){
+    const ready = (state.courts===1 && state.finished[1]) ||
+                  (state.courts===2 && state.finished[1] && state.finished[2]);
+    $("#playoffBar").classList.toggle("hidden", !ready);
+  }
+
+  // ---------- Render ----------
+  function renderAll(){
+    $("#globalRound").textContent = Math.max(state.round[1], state.round[2]);
+
+    // Jugadores
+    renderPlayersList(1);
+    renderPlayersList(2);
+
+    // Partidos (sólo el abierto por cancha)
+    renderMatches(1);
+    renderMatches(2);
+
+    // Tablas
+    renderTable(1);
+    renderTable(2);
+  }
+
+  function renderPlayersList(court){
+    const ul = court===1 ? $("#playersList1") : $("#playersList2");
+    ul.innerHTML = "";
+    state.players[court].forEach(name=>{
+      const li = el("li",{},[
+        el("div",{class:"left"},[
+          el("span",{class:"tag",text:name}),
+          el("span",{class:"badge",text:`C${court}`})
+        ]),
+        el("div",{},[
+          el("button",{class:"danger",text:"x"})
+        ])
+      ]);
+      li.querySelector("button").onclick = ()=> removePlayer(court, name);
+      ul.appendChild(li);
+    });
+  }
+
+  function renderMatches(court){
+    const box = court===1 ? $("#matches1") : $("#matches2");
+    box.innerHTML = "";
+
+    if(state.players[court].length<4){
+      box.appendChild(el("div",{class:"muted",text:"Agrega al menos 4 jugadores para empezar."}));
+      return;
+    }
+
+    const m = state.openMatch[court];
+    if(!m){
+      const msg = state.finished[court] ? "Americano completado. Puedes crear eliminatoria."
+                                        : "Pulsa “Generar partidos”.";
+      box.appendChild(el("div",{class:"muted",text:msg}));
+      return;
+    }
+
+    // tarjeta del partido abierto
+    const card = el("div",{class:"card"},[
+      el("div",{class:"meta",text:`Cancha ${court} · Ronda ${state.round[court]}`}),
+      // vs
+      (()=> {
+        const row = el("div",{class:"row",style:"gap:.5rem;align-items:center"});
+        const tag = (n)=> el("span",{class:"tag",text:n});
+        row.appendChild(tag(m.a[0])); row.appendChild(tag(m.a[1]));
+        row.appendChild(el("span",{class:"muted",text:"VS"}));
+        row.appendChild(tag(m.b[0])); row.appendChild(tag(m.b[1]));
+        return row;
+      })(),
+      // marcador
+      (()=> {
+        const mark = el("div",{class:"mark"});
+        const inA = el("input",{class:"score",type:"number",min:"0",value:"0"});
+        const inB = el("input",{class:"score",type:"number",min:"0",value:"0"});
+        mark.appendChild(el("span",{class:"muted",text:`Marcador (a ${state.goal}):`}));
+        mark.appendChild(inA);
+        mark.appendChild(el("span",{text:"-"}));
+        mark.appendChild(inB);
+        const btn = el("button",{class:"primary",text:"Guardar resultado"});
+        btn.onclick = ()=> saveResult(court, inA, inB);
+        const wrap = el("div",{class:"row",style:"justify-content:space-between;gap:.5rem"});
+        wrap.appendChild(mark); wrap.appendChild(btn);
+        return wrap;
+      })()
+    ]);
+    box.appendChild(card);
+
+    // cola pendiente (info)
+    if(state.queue[court].length>0){
+      box.appendChild(el("div",{class:"muted",text:`Pendientes: ${state.queue[court].length} partidos`}));
     }
   }
-});
 
-document.getElementById('btnElimsGlobal')?.addEventListener('click', () => {
-  if (getCourtsCount() === 1) createSemisByCourt(1);
-  else createSemisCrossTwoCourts();
-});
+  function renderTable(court){
+    const tbody = court===1 ? $("#table1") : $("#table2");
+    tbody.innerHTML = "";
 
-/* =========================
-   INICIAL (render vacío)
-   ========================= */
+    const rows = Object.entries(state.standings[court]).map(([name,st])=>({
+      name,
+      pts: st.pts||0,
+      w: st.w||0,
+      l: st.l||0,
+      played: st.played||0,
+      lastRound: st.lastRound||0
+    }));
 
-renderPlayers(1);
-renderPlayers(2);
-renderStandings(1, []); // si tienes standings en memoria, colócalos aquí
-renderStandings(2, []);
+    rows.sort((a,b)=>{
+      if(b.pts!==a.pts) return b.pts-a.pts;
+      if(b.w!==a.w) return b.w-a.w;
+      return a.name.localeCompare(b.name);
+    });
+
+    rows.forEach((r,idx)=>{
+      const tr = el("tr",{},[
+        el("td",{text:String(idx+1)}),
+        el("td",{text:r.name}),
+        el("td",{text:String(r.pts)}),
+        el("td",{text:String(r.w)}),
+        el("td",{text:String(r.l)}),
+        el("td",{text:String(r.played)}),
+        el("td",{text:String(r.lastRound)})
+      ]);
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Primera pintura
+  renderAll();
+})();
