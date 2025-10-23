@@ -20,13 +20,8 @@ h3{margin:0 0 .6rem}
 .pill{background:var(--pill);padding:.2rem .5rem;border-radius:999px}
 .pillrow{display:flex;gap:.5rem;align-items:center}
 .select select{background:var(--pill);color:var(--txt);border:0;padding:.2rem .4rem;border-radius:6px}
-.grid{
-  display:grid;gap:1rem;padding:1rem;
-  grid-template-columns: 280px minmax(440px,1fr) 420px;
-}
-section,aside{
-  background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1rem;
-}
+.grid{display:grid;gap:1rem;padding:1rem;grid-template-columns: 280px minmax(440px,1fr) 420px}
+section,aside{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1rem}
 .row{display:flex;align-items:center}
 .gap{gap:.5rem}
 button{
