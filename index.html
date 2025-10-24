@@ -53,7 +53,7 @@
       </label>
       <label class="select"><span class="muted">Playoff:</span>
         <select id="playoffSelect">
-          <option value="auto">Automático</option>
+          <option value="auto" selected>Automático</option>
           <option value="none">Sin playoff</option>
         </select>
       </label>
@@ -66,7 +66,6 @@
 
     <!-- ====== Cancha 1 ====== -->
     <div class="court-row" id="row-c1">
-      <!-- Jugadores -->
       <section>
         <div class="sectionHead"><h3>Jugadores — Cancha 1</h3></div>
         <div class="row gap">
@@ -78,7 +77,6 @@
         <button id="reset1" class="danger mt">Reiniciar cancha 1</button>
       </section>
 
-      <!-- Partidos -->
       <section>
         <div class="sectionHead">
           <h3>Partidos (cancha 1) — <span class="muted">solo 1 abierto a la vez</span></h3>
@@ -87,7 +85,6 @@
         <div id="matches1"></div>
       </section>
 
-      <!-- Tabla -->
       <aside>
         <div class="sectionHead"><h3>Tabla de posiciones — Cancha 1</h3></div>
         <table class="table">
@@ -101,7 +98,6 @@
 
     <!-- ====== Cancha 2 ====== -->
     <div class="court-row hidden" id="row-c2">
-      <!-- Jugadores -->
       <section>
         <div class="sectionHead"><h3>Jugadores — Cancha 2</h3></div>
         <div class="row gap">
@@ -113,7 +109,6 @@
         <button id="reset2" class="danger mt">Reiniciar cancha 2</button>
       </section>
 
-      <!-- Partidos -->
       <section>
         <div class="sectionHead">
           <h3>Partidos (cancha 2) — <span class="muted">solo 1 abierto a la vez</span></h3>
@@ -122,7 +117,6 @@
         <div id="matches2"></div>
       </section>
 
-      <!-- Tabla -->
       <aside>
         <div class="sectionHead"><h3>Tabla de posiciones — Cancha 2</h3></div>
         <table class="table">
@@ -134,7 +128,7 @@
       </aside>
     </div>
 
-    <!-- Playoff: barra y sección visible (no modal) -->
+    <!-- Playoff -->
     <div id="playoffBar" class="hidden" style="padding:0 .5rem .5rem">
       <button id="buildPlayoff" class="primary">Crear eliminatoria</button>
       <span class="muted" id="playoffHint"></span>
@@ -151,7 +145,7 @@
           <div id="playoffTop"></div>
         </div>
         <div>
-          <div class="heading-small">Bottom</div>
+          <div class="heading-small">Consolación</div>
           <div id="playoffBottom"></div>
         </div>
       </div>
