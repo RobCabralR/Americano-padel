@@ -1,11 +1,9 @@
 /* Americano por cancha + Eliminatoria embebida
    Reglas: máx 8 por cancha, sin empates, ganador llega EXACTO a la meta.
-   Cambios:
-   - 1 cancha con 8 jugadores: semifinales → (1,3) vs (5,7) y (2,4) vs (6,8) → Final
-   - 1 cancha con 6 jugadores: Final directa (1,3) vs (2,4)
-   - 2 canchas: Top4 C1 vs Top4 C2 (semis y final). La Final se muestra solo cuando hay ganadores en ambas semis.
-   - “Consolación” solo aparece si existe; si no, se oculta toda la columna. Sin mensajes de “bye”.
-   - Marcamos qué partido es el “Siguiente” (primer match listo y sin resultado).
+   Últimas mejoras:
+   - Inputs de playoff habilitados en cualquier partido LISTO (no solo “Siguiente”).
+   - Final solo aparece cuando ya hay finalistas.
+   - Bloqueo de alta/baja de jugadores al iniciar americano (se desbloquea al reiniciar cancha).
 */
 
 (function(){
@@ -74,9 +72,14 @@
   $("#buildPlayoff").onclick = ()=> buildPlayoff();
 
   // ---------- Jugadores ----------
+  function courtLocked(court){
+    return !!(state.openMatch[court] || state.queue[court].length>0 || state.finished[court]);
+  }
+
   function addPlayer(court, nameRaw){
     const name = (nameRaw||"").trim();
     if(!name) return;
+    if(courtLocked(court)){ alert("No puedes modificar la lista: el americano ya comenzó."); return; }
     if(state.players[court].length>=8){ alert("Máximo 8 jugadores por cancha."); return; }
     if(state.players[1].includes(name) || state.players[2].includes(name)){
       alert("Ese nombre ya existe en alguna cancha."); return;
@@ -89,6 +92,7 @@
   }
 
   function removePlayer(court, name){
+    if(courtLocked(court)){ alert("No puedes eliminar jugadores: el americano ya comenzó."); return; }
     state.players[court] = state.players[court].filter(n=>n!==name);
     delete state.standings[court][name];
     state.queue[court]=[]; state.openMatch[court]=null; state.finished[court]=false; state.round[court]=1;
@@ -119,7 +123,7 @@
     renderAll();
   }
 
-  // Round-robin → partidos de dobles
+  // Round-robin → partidos de dobles (puede dejar un “carry” con 6/7)
   function buildAmericanQueue(players){
     const BYE = "__BYE__";
     const arr = players.slice();
@@ -228,7 +232,7 @@
     const ready = oneCourtReady || twoCourtsReady;
     $("#playoffBar").classList.toggle("hidden", !ready);
     $("#playoffHint").textContent = ready
-      ? (state.courts===1 ? "Modo 1 cancha: Semis (1,3 vs 5,7) y (2,4 vs 6,8); Final." : "Modo 2 canchas: Top4 C1 vs Top4 C2 (semis y final).")
+      ? (state.courts===1 ? "Modo 1 cancha: Semis (1,3 vs 5,7) y (2,4 vs 6,8) o Final directa (con 6)." : "Modo 2 canchas: Top4 C1 vs Top4 C2 (semis y final).")
       : "";
   }
 
@@ -241,7 +245,7 @@
       const S = standingsOrdered(1).map(r=>r.name);
       if(S.length<6){ alert("Se requieren al menos 6 jugadores (1 cancha)."); return; }
 
-      // 8 jugadores → Semis cruzadas: (1,3) vs (5,7) y (2,4) vs (6,8)
+      // 8 jugadores → Semis: (1,3)-(5,7) y (2,4)-(6,8)
       if(S.length>=8){
         state.playoff = {
           metaTxt: "1 cancha",
@@ -250,7 +254,7 @@
             semi2: { teamA: makeTeam("C1", S[1], S[3]), teamB: makeTeam("C1", S[5], S[7]), scoreA:null, scoreB:null, winner:null },
             final: { teamA: "winner_top_semi1", teamB: "winner_top_semi2", scoreA:null, scoreB:null, winner:null }
           },
-          bottom: null // no hay bracket de consolación separado en este formato
+          bottom: null
         };
       }else{
         // 6 jugadores → Final directa (1,3) vs (2,4)
@@ -273,11 +277,11 @@
           }
         : null;
 
-      // Consolación opcional (si hay material en ambas canchas)
+      // Consolación opcional (si hay pares en ambas canchas)
       const b1 = bottomPairsFromOrdered(s1).map(t=>makeTeam("C1", t[0], t[1]));
       const b2 = bottomPairsFromOrdered(s2).map(t=>makeTeam("C2", t[0], t[1]));
       const pairs = [];
-      const len = Math.min(b1.length, b2.length); // solo si hay par en ambos lados
+      const len = Math.min(b1.length, b2.length);
       for(let i=0;i<len;i++) pairs.push([b1[i], b2[i]]);
 
       let bottom = null;
@@ -301,12 +305,11 @@
     renderPlayoff();
   }
 
-  // Construcción de pares “bottom” por cancha (para 2 canchas)
   function bottomPairsFromOrdered(L){
     const n = L.length;
     if(n<6) return [];
     if(n===6) return [[L[4],L[5]]];
-    if(n===7) return [[L[4],L[5]]]; // consolidado
+    if(n===7) return [[L[4],L[5]]];
     return [[L[4],L[6]],[L[5],L[7]]];
   }
 
@@ -325,13 +328,13 @@
     node.scoreA = a; node.scoreB = b;
     node.winner = (a>b) ? node.teamA : node.teamB;
 
-    const bracket = state.playoff[scope];
-    if(bracket && bracket.final){
-      if(bracket.final.teamA==="winner_top_semi1" || bracket.final.teamA==="winner_bottom_semi1"){
-        if(key==="semi1") bracket.final.teamA = node.winner;
+    const br = state.playoff[scope];
+    if(br && br.final){
+      if(br.final.teamA==="winner_top_semi1" || br.final.teamA==="winner_bottom_semi1"){
+        if(key==="semi1") br.final.teamA = node.winner;
       }
-      if(bracket.final.teamB==="winner_top_semi2" || bracket.final.teamB==="winner_bottom_semi2"){
-        if(key==="semi2") bracket.final.teamB = node.winner;
+      if(br.final.teamB==="winner_top_semi2" || br.final.teamB==="winner_bottom_semi2"){
+        if(key==="semi2") br.final.teamB = node.winner;
       }
     }
     renderPlayoff();
@@ -340,6 +343,12 @@
   // ---------- Render ----------
   function renderAll(){
     $("#globalRound").textContent = Math.max(state.round[1], state.round[2]);
+
+    // bloquear inputs de nombre/añadir si está locked
+    $("#playerInput1").disabled = courtLocked(1);
+    $("#addPlayer1").disabled = courtLocked(1);
+    $("#playerInput2").disabled = courtLocked(2);
+    $("#addPlayer2").disabled = courtLocked(2);
 
     renderPlayersList(1); renderPlayersList(2);
     renderMatches(1); renderMatches(2);
@@ -350,17 +359,20 @@
   function renderPlayersList(court){
     const ul = court===1 ? $("#playersList1") : $("#playersList2");
     ul.innerHTML = "";
+    const locked = courtLocked(court);
+
     state.players[court].forEach(name=>{
       const li = el("li",{},[
         el("div",{class:"left"},[
           el("span",{class:"tag",text:name}),
           el("span",{class:"badge",text:`C${court}`})
-        ]),
-        el("div",{},[
-          el("button",{class:"danger",text:"x"})
         ])
       ]);
-      li.querySelector("button").onclick = ()=> removePlayer(court, name);
+      if(!locked){
+        const btn = el("button",{class:"danger",text:"x"});
+        btn.onclick = ()=> removePlayer(court, name);
+        li.appendChild(el("div",{},[btn]));
+      }
       ul.appendChild(li);
     });
   }
@@ -416,32 +428,6 @@
     }
   }
 
-  function renderTable(court){
-    const tbody = court===1 ? $("#table1") : $("#table2");
-    tbody.innerHTML = "";
-
-    const rows = Object.entries(state.standings[court]).map(([name,st])=>({
-      name, pts: st.pts||0, w: st.w||0, l: st.l||0, played: st.played||0, lastRound: st.lastRound||0
-    })).sort((a,b)=>{
-      if(b.pts!==a.pts) return b.pts-a.pts;
-      if(b.w!==a.w) return b.w-a.w;
-      return a.name.localeCompare(b.name);
-    });
-
-    rows.forEach((r,idx)=>{
-      const tr = el("tr",{},[
-        el("td",{text:String(idx+1)}),
-        el("td",{text:r.name}),
-        el("td",{text:String(r.pts)}),
-        el("td",{text:String(r.w)}),
-        el("td",{text:String(r.l)}),
-        el("td",{text:String(r.played)}),
-        el("td",{text:String(r.lastRound)})
-      ]);
-      tbody.appendChild(tr);
-    });
-  }
-
   // ---------- Render playoff ----------
   function renderPlayoff(){
     const sec = $("#playoffSection");
@@ -460,12 +446,25 @@
     const botCol = botBox.parentElement;
     if(!state.playoff.bottom) botCol.style.display="none"; else botCol.style.display="block";
 
-    // Helper: tarjeta de partido con “Siguiente”
+    function isReady(node){ return !!(node && node.teamA && node.teamB); }
+
+    // “Siguiente”: primer partido listo y sin score
+    function nextKey(br){
+      if(!br) return null;
+      const order = ["semi1","semi2","final"];
+      for(const k of order){
+        const n = br[k];
+        if(!n) continue;
+        if(isReady(n) && n.scoreA==null && n.scoreB==null) return k;
+      }
+      return null;
+    }
+
     function matchCard(scope, key, node, title, isNext){
       const card = el("div",{class:"card"});
       card.appendChild(el("div",{class:"meta",text: title + (isNext ? " · Siguiente" : "")}));
 
-      if(!node.teamA || !node.teamB){
+      if(!isReady(node)){
         card.appendChild(el("div",{class:"muted",text:"(pendiente)"}));
         return card;
       }
@@ -479,14 +478,13 @@
 
       const G = state.goal;
       const mark = el("div",{class:"mark"});
-      const inA = el("input",{class:"score",type:"number",min:"0",max:String(G),value: node.scoreA??0, disabled: !isNext && (node.scoreA==null && node.scoreB==null) });
-      const inB = el("input",{class:"score",type:"number",min:"0",max:String(G),value: node.scoreB??0, disabled: !isNext && (node.scoreA==null && node.scoreB==null) });
+      const inA = el("input",{class:"score",type:"number",min:"0",max:String(G),value: node.scoreA??0});
+      const inB = el("input",{class:"score",type:"number",min:"0",max:String(G),value: node.scoreB??0});
       mark.appendChild(el("span",{class:"muted",text:`Marcador (a ${G}):`}));
       mark.appendChild(inA);
       mark.appendChild(el("span",{text:"-"}));
       mark.appendChild(inB);
       const btn = el("button",{class:"primary",text:"Guardar"});
-      btn.disabled = !isNext && (node.scoreA==null && node.scoreB==null);
       btn.onclick = ()=> savePlayoffResult(scope, key, inA, inB);
 
       const wrap = el("div",{class:"row",style:"justify-content:space-between;gap:.5rem"});
@@ -499,55 +497,35 @@
       return card;
     }
 
-    // Determinar el “siguiente” partido en cada bloque (el primero listo y sin resultado)
-    function nextKey(br){
-      if(!br) return null;
-      const order = ["semi1","semi2","final"];
-      for(const k of order){
-        const n = br[k];
-        if(!n) continue;
-        const ready = n.teamA && n.teamB;
-        const unsaved = n.scoreA==null && n.scoreB==null;
-        if(ready && unsaved) return k;
-      }
-      return null;
-    }
-
     topBox.innerHTML = "";
     botBox.innerHTML = "";
 
     // TOP
     if(state.playoff.top){
       const br = state.playoff.top;
-
-      // Mostrar final solo cuando ambos finalistas estén definidos
-      if(br.final && (typeof br.final.teamA==="string" || typeof br.final.teamB==="string")){
-        // ocultar final hasta que haya ganadores en semis
-      }
-
-      const keys = ["semi1","semi2","final"].filter(k => br[k]);
       const nkey = nextKey(br);
 
-      keys.forEach(k=>{
-        const title = (k==="final" ? "Final" : "Semifinal");
-        // solo render final si tiene equipos completos
-        if(k==="final" && (!br.final.teamA || !br.final.teamB)) return;
-        topBox.appendChild(matchCard("top", k, br[k], title, k===nkey));
-      });
+      // Semis
+      if(br.semi1) topBox.appendChild(matchCard("top","semi1",br.semi1,"Semifinal", nkey==="semi1"));
+      if(br.semi2) topBox.appendChild(matchCard("top","semi2",br.semi2,"Semifinal", nkey==="semi2"));
+
+      // Final: solo si tiene 2 equipos completos
+      if(br.final && isReady(br.final)){
+        topBox.appendChild(matchCard("top","final",br.final,"Final", nkey==="final"));
+      }
     }else{
       topBox.appendChild(el("div",{class:"muted",text:"(No hay Top disponible)"}));
     }
 
-    // CONSOLACIÓN (solo si existe)
+    // CONSOLACIÓN
     if(state.playoff.bottom){
       const br = state.playoff.bottom;
-      const keys = ["semi1","semi2","final"].filter(k => br[k]);
       const nkey = nextKey(br);
-      keys.forEach(k=>{
-        const title = (k==="final" ? "Final Consolación" : "Semifinal");
-        if(k==="final" && (!br.final.teamA || !br.final.teamB)) return;
-        botBox.appendChild(matchCard("bottom", k, br[k], title, k===nkey));
-      });
+      if(br.semi1) botBox.appendChild(matchCard("bottom","semi1",br.semi1,"Semifinal", nkey==="semi1"));
+      if(br.semi2) botBox.appendChild(matchCard("bottom","semi2",br.semi2,"Semifinal", nkey==="semi2"));
+      if(br.final && isReady(br.final)){
+        botBox.appendChild(matchCard("bottom","final",br.final,"Final Consolación", nkey==="final"));
+      }
     }
   }
 
